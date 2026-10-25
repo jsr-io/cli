@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+path = "lib.rs"
+
 [dependencies]
 deno_ast = { workspace = true, features = ["view", "visit", "utils"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }

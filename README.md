@@ -2,7 +2,7 @@
 
 The JSR command line tool for publishing packages, independent of Deno.
 
-`crates/jsr_cli` contains the publish and pack logic, copied from
+`src` contains the publish and pack logic, copied from
 `cli/tools/publish` and `cli/tools/pack` in Deno 2.9, without the
 dependencies on `deno_core` and `deno_runtime`. The `chore: copy ...` commits
 contain the unmodified copies, so `git log -p` shows every change made to
@@ -29,8 +29,8 @@ output.
 
 ## Layout
 
-- `crates/jsr`: the `jsr` binary (argument parsing and logging).
-- `crates/jsr_cli`: the publish and pack logic.
+- `cli`: the `jsr` binary (argument parsing and logging).
+- `src`: the `jsr_cli` crate with the publish and pack logic.
 
 ## Development
 

@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["crates/jsr", "crates/jsr_cli"]
-default-members = ["crates/jsr", "crates/jsr_cli"]
+members = ["cli", "src"]
+default-members = ["cli", "src"]
 
 [workspace.package]
 edition = "2024"

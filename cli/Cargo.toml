@@ -9,10 +9,10 @@ publish = false
 
 [[bin]]
 name = "jsr"
-path = "src/main.rs"
+path = "main.rs"
 
 [dependencies]
-jsr_cli = { path = "../jsr_cli" }
+jsr_cli = { path = "../src" }
 
 anyhow.workspace = true
 clap.workspace = true
