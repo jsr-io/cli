@@ -79,6 +79,9 @@ impl PublishFactory {
       },
     ));
     let workspace = &workspace_factory.workspace_directory()?.workspace;
+    for diagnostic in workspace.diagnostics() {
+      log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
+    }
     let unstable_sloppy_imports =
       options.sloppy_imports || workspace.has_unstable("sloppy-imports");
     let unstable_raw_imports =

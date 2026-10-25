@@ -36,7 +36,7 @@ bytes = "1.11.1"
 clap = { version = "4.5", features = ["derive"] }
 env_logger = { version = "=0.11.6", default-features = false }
 faster-hex = "0.10.0"
-flate2 = { version = "1.0.30", default-features = false, features = ["rust_backend"] }
+flate2 = { version = "1.0.30", default-features = false, features = ["zlib-ng-compat"] }
 futures = "0.3.31"
 http = "1.0"
 http-body = "1.0"

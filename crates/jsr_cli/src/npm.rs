@@ -9,6 +9,7 @@ use deno_npm_cache::NpmCacheHttpClientBytesResponse;
 use deno_npm_cache::NpmCacheHttpClientResponse;
 use deno_npm_cache::NpmPackumentFormat;
 use deno_npmrc::RegistryConfig;
+use deno_terminal::colors;
 use url::Url;
 
 use crate::Sys;
@@ -66,6 +67,7 @@ impl deno_npm_cache::NpmCacheHttpClient for NpmCacheHttpClient {
     maybe_etag: Option<String>,
     maybe_registry_config: Option<&RegistryConfig>,
   ) -> Result<NpmCacheHttpClientResponse, deno_npm_cache::DownloadError> {
+    log::info!("{} {}", colors::green("Download"), url);
     let client = self
       .get_or_create_http_client(maybe_registry_config)
       .map_err(|err| deno_npm_cache::DownloadError {

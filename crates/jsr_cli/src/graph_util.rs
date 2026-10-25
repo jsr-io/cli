@@ -243,7 +243,9 @@ impl<'a> ModuleGraphCreator<'a> {
         roots.iter(),
         deno_graph::WalkOptions {
           check_js: CheckJsOption::Custom(compiler_options_resolver.as_ref()),
-          kind: GraphKind::All,
+          // nothing is type checked, so like `deno publish --no-check`, only
+          // validate the code dependencies
+          kind: GraphKind::CodeOnly,
           follow_dynamic: false,
           prefer_fast_check_graph: false,
         },
