@@ -73,6 +73,8 @@ pub struct PublishOptions {
   pub cwd: PathBuf,
   /// Path to the config file, relative to `cwd`. Discovered when `None`.
   pub config: Option<PathBuf>,
+  /// Disables automatic loading of the config file.
+  pub no_config: bool,
   pub token: Option<String>,
   pub dry_run: bool,
   pub allow_slow_types: bool,
@@ -89,6 +91,7 @@ pub async fn publish(options: PublishOptions) -> Result<(), AnyError> {
     FactoryOptions {
       cwd: options.cwd.clone(),
       config: options.config.clone(),
+      no_config: options.no_config,
       sloppy_imports: options.sloppy_imports,
       unstable_raw_imports: options.unstable_raw_imports,
     },

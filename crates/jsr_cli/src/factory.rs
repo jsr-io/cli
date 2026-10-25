@@ -45,6 +45,8 @@ pub struct FactoryOptions {
   /// Path to a config file, relative to `cwd`. When `None`, the config file
   /// is discovered from `cwd`.
   pub config: Option<PathBuf>,
+  /// Disables automatic loading of the config file.
+  pub no_config: bool,
   pub sloppy_imports: bool,
   pub unstable_raw_imports: bool,
 }
@@ -70,6 +72,7 @@ impl PublishFactory {
         additional_config_file_names: &["jsr.json", "jsr.jsonc"],
         config_discovery: match &options.config {
           Some(path) => ConfigDiscoveryOption::Path(options.cwd.join(path)),
+          None if options.no_config => ConfigDiscoveryOption::Disabled,
           None => ConfigDiscoveryOption::DiscoverCwd,
         },
         ..Default::default()

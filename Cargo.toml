@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["crates/jsr_cli"]
+members = ["crates/jsr", "crates/jsr_cli"]
+default-members = ["crates/jsr", "crates/jsr_cli"]
 
 [workspace.package]
 edition = "2024"
@@ -32,6 +33,8 @@ aws-lc-rs = "1.18.2"
 async-trait = "0.1.73"
 base64 = "0.22.1"
 bytes = "1.11.1"
+clap = { version = "4.5", features = ["derive"] }
+env_logger = { version = "=0.11.6", default-features = false }
 faster-hex = "0.10.0"
 flate2 = { version = "1.0.30", default-features = false, features = ["rust_backend"] }
 futures = "0.3.31"

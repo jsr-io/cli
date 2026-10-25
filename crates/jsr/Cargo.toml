@@ -1,0 +1,22 @@
+[package]
+name = "jsr"
+version = "0.1.0"
+description = "The JSR command line tool"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "jsr"
+path = "src/main.rs"
+
+[dependencies]
+jsr_cli = { path = "../jsr_cli" }
+
+anyhow.workspace = true
+clap.workspace = true
+deno_terminal.workspace = true
+env_logger.workspace = true
+log.workspace = true
+tokio.workspace = true
