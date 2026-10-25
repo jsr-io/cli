@@ -14,10 +14,10 @@ use deno_graph::analysis::TypeScriptReference;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
-use crate::tools::unfurl_utils::SpecifierTextContext;
-use crate::tools::unfurl_utils::dynamic_argument_prefix_range;
-use crate::tools::unfurl_utils::specifier_text_change;
-use crate::tools::unfurl_utils::to_range;
+use crate::unfurl_utils::SpecifierTextContext;
+use crate::unfurl_utils::dynamic_argument_prefix_range;
+use crate::unfurl_utils::specifier_text_change;
+use crate::unfurl_utils::to_range;
 
 /// Result of unfurling a module's specifiers for npm compatibility.
 pub struct UnfurlResult {
@@ -133,7 +133,7 @@ pub fn unfurl_specifiers(
   {
     use deno_ast::swc::ecma_visit::VisitWith;
 
-    use crate::tools::unfurl_utils::ImportMetaResolveCollector;
+    use crate::unfurl_utils::ImportMetaResolveCollector;
 
     let mut collector = ImportMetaResolveCollector::default();
     parsed_source.program_ref().visit_with(&mut collector);

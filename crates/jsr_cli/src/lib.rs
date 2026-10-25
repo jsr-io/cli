@@ -1,10 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! Publishing packages to JSR.
+//! Publishing packages to JSR and packing them as npm tarballs.
 //!
-//! The publish logic was copied from `cli/tools/publish` in the Deno
-//! repository (Deno 2.9). It doesn't depend on `deno_core` or
-//! `deno_runtime`, so it builds for `wasm32-unknown-unknown`.
+//! The code was copied from `cli/tools/publish` and `cli/tools/pack` in the
+//! Deno repository (Deno 2.9), without the dependencies on `deno_core` and
+//! `deno_runtime`.
 
 mod factory;
 mod file_fetcher;
@@ -13,10 +13,13 @@ mod graph_util;
 mod http_util;
 mod no_slow_types;
 mod npm;
+pub mod pack;
 pub mod publish;
 mod registry;
 mod unfurl_utils;
 mod util;
+
+pub use factory::FactoryOptions;
 
 pub type Sys = sys_traits::impls::RealSys;
 

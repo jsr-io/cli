@@ -2,29 +2,27 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
+use anyhow::Context;
+use anyhow::Error as AnyError;
+use anyhow::bail;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::diagnostics::Diagnostic;
 use deno_config::glob::FileCollector;
 use deno_config::workspace::JsrPackageConfig;
-use deno_core::anyhow::Context;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_terminal::colors;
 
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::PackFlags;
-use crate::args::resolve_file_patterns;
-use crate::factory::CliFactory;
+use crate::Sys as CliSys;
+use crate::factory::FactoryOptions;
+use crate::factory::PublishFactory;
 use crate::graph_util::CreatePublishGraphOptions;
-use crate::sys::CliSys;
-use crate::tools::lint::collect_no_slow_type_diagnostics;
+use crate::graph_util::ModuleGraphCreator;
+use crate::no_slow_types::collect_no_slow_type_diagnostics;
 use crate::util::display::human_size;
 
 mod extensions;
@@ -39,17 +37,59 @@ use npm_tarball::default_tarball_filename;
 use package_json::generate_package_json;
 use unfurl::unfurl_specifiers;
 
+/// The arguments of `deno pack`.
+#[derive(Debug, Clone, Default)]
+pub struct PackFlags {
+  pub files: FileFlags,
+  pub output: Option<String>,
+  pub dry_run: bool,
+  pub allow_slow_types: bool,
+  pub allow_dirty: bool,
+  pub set_version: Option<String>,
+  pub no_source_maps: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FileFlags {
+  pub ignore: Vec<String>,
+  pub include: Vec<String>,
+}
+
+fn resolve_file_patterns(
+  files: &FileFlags,
+  base: &Path,
+) -> Result<deno_config::glob::FilePatterns, AnyError> {
+  Ok(deno_config::glob::FilePatterns {
+    include: if files.include.is_empty() {
+      None
+    } else {
+      Some(
+        deno_config::glob::PathOrPatternSet::from_include_relative_path_or_patterns(
+          base,
+          &files.include,
+        )?,
+      )
+    },
+    exclude:
+      deno_config::glob::PathOrPatternSet::from_exclude_relative_path_or_patterns(
+        base,
+        &files.ignore,
+      )?,
+    base: base.to_path_buf(),
+  })
+}
+
 pub async fn pack(
-  flags: Arc<Flags>,
+  options: FactoryOptions,
   pack_flags: PackFlags,
 ) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags);
-  let cli_options = cli_factory.cli_options()?;
+  let factory = PublishFactory::new(CliSys::default(), options)?;
+  let initial_cwd = factory.options().cwd.clone();
+  let start_dir = factory.workspace_directory()?;
 
   // Check if git repository is clean (unless --allow-dirty)
   if !pack_flags.allow_dirty
-    && let Some(dirty) =
-      crate::util::git::check_if_git_repo_dirty(cli_options.initial_cwd()).await
+    && let Some(dirty) = crate::git::check_if_git_repo_dirty(&initial_cwd).await
   {
     bail!(
       "Git repository has uncommitted changes. Use --allow-dirty to pack anyway.\n{}",
@@ -58,9 +98,9 @@ pub async fn pack(
   }
 
   // Get package configs
-  let mut packages = cli_options.start_dir.jsr_packages_for_publish();
+  let mut packages = start_dir.jsr_packages_for_publish();
   if packages.is_empty() {
-    match cli_options.start_dir.member_deno_json() {
+    match start_dir.member_deno_json() {
       Some(deno_json) => {
         let Some(name) = deno_json.json.name.clone() else {
           bail!(
@@ -83,7 +123,7 @@ pub async fn pack(
 
         packages.push(JsrPackageConfig {
           name,
-          member_dir: cli_options.start_dir.workspace.root_dir().clone(),
+          member_dir: start_dir.workspace.root_dir().clone(),
           config_file: deno_json.clone(),
           license: deno_json
             .json
@@ -99,8 +139,8 @@ pub async fn pack(
     }
   }
 
-  let module_graph_creator = cli_factory.module_graph_creator().await?;
-  let parsed_source_cache = cli_factory.parsed_source_cache()?;
+  let module_graph_creator = ModuleGraphCreator::new(&factory);
+  let parsed_source_cache = factory.resolver_factory().parsed_source_cache();
 
   for package in packages {
     // Validate package name format
@@ -141,7 +181,7 @@ pub async fn pack(
     };
 
     // Build module graph
-    let graph = create_graph(module_graph_creator, &package, &pack_flags)
+    let graph = create_graph(&module_graph_creator, &package, &pack_flags)
       .await
       .with_context(|| {
         format!(
@@ -176,7 +216,7 @@ pub async fn pack(
     // file and README/LICENSE are excluded here to avoid duplicates.
     let asset_files = collect_asset_files(
       &package,
-      cli_options,
+      &factory,
       &pack_flags,
       &version,
       &collected_paths,
@@ -235,14 +275,14 @@ fn warn_for_slow_type_diagnostics(
 }
 
 async fn create_graph(
-  module_graph_creator: &Arc<crate::graph_util::ModuleGraphCreator>,
+  module_graph_creator: &ModuleGraphCreator<'_>,
   package: &JsrPackageConfig,
   pack_flags: &PackFlags,
 ) -> Result<ModuleGraph, AnyError> {
   use deno_graph::WorkspaceFastCheckOption;
 
-  use crate::args::config_to_deno_graph_workspace_member;
   use crate::graph_util::BuildFastCheckGraphOptions;
+  use crate::graph_util::config_to_deno_graph_workspace_member;
 
   // Build initial graph without fast check DTS
   let mut graph = module_graph_creator
@@ -250,7 +290,6 @@ async fn create_graph(
       packages: std::slice::from_ref(package),
       build_fast_check_graph: !pack_flags.allow_slow_types,
       validate_graph: true,
-      skip_unanalyzable_exports: false,
     })
     .await?;
   warn_for_slow_type_diagnostics(&graph, package, pack_flags)?;
@@ -261,7 +300,6 @@ async fn create_graph(
       config_to_deno_graph_workspace_member(&package.config_file)?;
 
     module_graph_creator
-      .module_graph_builder()
       .build_fast_check_graph(
         &mut graph,
         BuildFastCheckGraphOptions {
@@ -270,7 +308,8 @@ async fn create_graph(
           ]),
           fast_check_dts: true,
         },
-      )?;
+      )
+      .await?;
   }
 
   Ok(graph)
@@ -446,7 +485,7 @@ pub struct AssetFile {
 ///   - the auto-included README/LICENSE files.
 fn collect_asset_files(
   package: &JsrPackageConfig,
-  cli_options: &CliOptions,
+  factory: &PublishFactory,
   pack_flags: &PackFlags,
   version: &str,
   collected_paths: &[CollectedPath],
@@ -493,7 +532,7 @@ fn collect_asset_files(
     Some(output) => PathBuf::from(output),
     None => default_tarball_filename(&package.config_file, version)?,
   };
-  excluded.insert(cli_options.initial_cwd().join(output_tarball));
+  excluded.insert(factory.options().cwd.join(output_tarball));
 
   let collected = FileCollector::new(|e| {
     if !e.metadata.file_type().is_file() {
@@ -517,7 +556,13 @@ fn collect_asset_files(
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .set_vendor_folder(
+    factory
+      .workspace_directory()?
+      .workspace
+      .vendor_dir_path()
+      .map(ToOwned::to_owned),
+  )
   .use_gitignore()
   .collect_file_patterns(&CliSys::default(), &file_patterns);
 

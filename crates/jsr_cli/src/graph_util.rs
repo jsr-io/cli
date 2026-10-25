@@ -39,6 +39,14 @@ pub type PublishGraphLoader = deno_resolver::file_fetcher::DenoGraphLoader<
   crate::file_fetcher::HttpClientAdapter,
 >;
 
+pub struct BuildFastCheckGraphOptions<'a> {
+  /// Whether to do fast check on workspace members. This
+  /// is mostly only useful when publishing.
+  pub workspace_fast_check: WorkspaceFastCheckOption<'a>,
+  /// Whether to generate .d.ts files.
+  pub fast_check_dts: bool,
+}
+
 pub struct CreatePublishGraphOptions<'a> {
   pub packages: &'a [JsrPackageConfig],
   pub build_fast_check_graph: bool,
@@ -195,28 +203,57 @@ impl<'a> ModuleGraphCreator<'a> {
         .iter()
         .map(|p| config_to_deno_graph_workspace_member(&p.config_file))
         .collect::<Result<Vec<_>, _>>()?;
-      log::debug!("Building fast check graph");
-      let graph_resolver = deno_resolver.as_graph_resolver(
-        cjs_tracker,
+      self
+        .build_fast_check_graph(
+          &mut graph,
+          BuildFastCheckGraphOptions {
+            workspace_fast_check: WorkspaceFastCheckOption::Enabled(
+              &fast_check_workspace_members,
+            ),
+            fast_check_dts: false,
+          },
+        )
+        .await?;
+    }
+
+    Ok(graph)
+  }
+
+  pub async fn build_fast_check_graph(
+    &self,
+    graph: &mut ModuleGraph,
+    options: BuildFastCheckGraphOptions<'_>,
+  ) -> Result<(), AnyError> {
+    if !graph.graph_kind().include_types() {
+      return Ok(());
+    }
+
+    log::debug!("Building fast check graph");
+    let resolver_factory = self.factory.resolver_factory();
+    let parser = resolver_factory.parsed_source_cache().as_capturing_parser();
+    let jsx_import_source_config_resolver =
+      JsxImportSourceConfigResolver::from_compiler_options_resolver(
+        resolver_factory.compiler_options_resolver()?,
+      )?;
+    let graph_resolver =
+      resolver_factory.deno_resolver().await?.as_graph_resolver(
+        resolver_factory.cjs_tracker()?,
         &jsx_import_source_config_resolver,
         None,
         NpmTypesResolutionMode::Strict,
       );
-      graph.build_fast_check_type_graph(
-        deno_graph::BuildFastCheckTypeGraphOptions {
-          es_parser: Some(&parser),
-          fast_check_cache: None,
-          fast_check_dts: false,
-          jsr_url_provider: &jsr_url_provider,
-          resolver: Some(&graph_resolver),
-          workspace_fast_check: WorkspaceFastCheckOption::Enabled(
-            &fast_check_workspace_members,
-          ),
-        },
-      );
-    }
-
-    Ok(graph)
+    let jsr_url_provider = JsrUrlProvider(self.factory.jsr_url().clone());
+    graph.build_fast_check_type_graph(
+      deno_graph::BuildFastCheckTypeGraphOptions {
+        es_parser: Some(&parser),
+        fast_check_cache: None,
+        fast_check_dts: options.fast_check_dts,
+        jsr_url_provider: &jsr_url_provider,
+        resolver: Some(&graph_resolver),
+        workspace_fast_check: options.workspace_fast_check,
+      },
+    );
+    Ok(())
   }
 
   /// Check if the graph's roots and their deps are available. Returns
