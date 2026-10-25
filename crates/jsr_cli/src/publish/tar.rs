@@ -3,13 +3,13 @@
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use bytes::Bytes;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use sha2::Digest;
 use tar::Header;
+use url::Url;
 
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::module_content::ModuleContentProvider;

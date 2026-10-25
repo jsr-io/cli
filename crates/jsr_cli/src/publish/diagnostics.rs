@@ -4,6 +4,8 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::Error as AnyError;
+use anyhow::anyhow;
 use deno_ast::ParseDiagnostic;
 use deno_ast::SourcePos;
 use deno_ast::SourceRange;
@@ -18,12 +20,10 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
 use deno_ast::swc::common::util::take::Take;
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
 use deno_graph::fast_check::FastCheckDiagnostic;
 use deno_semver::Version;
+use parking_lot::Mutex;
+use url::Url;
 
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 
@@ -73,14 +73,6 @@ impl PublishDiagnosticsCollector {
     } else {
       Ok(())
     }
-  }
-
-  pub fn has_error(&self) -> bool {
-    self
-      .diagnostics
-      .lock()
-      .iter()
-      .any(|d| matches!(d.level(), DiagnosticLevel::Error))
   }
 
   pub fn push(&self, diagnostic: PublishDiagnostic) {

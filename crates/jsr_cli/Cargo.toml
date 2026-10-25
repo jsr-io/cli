@@ -1,0 +1,63 @@
+[package]
+name = "jsr_cli"
+version = "0.1.0"
+description = "Publish and pack packages for JSR"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+deno_ast = { workspace = true, features = ["view", "visit", "utils"] }
+deno_cache_dir = { workspace = true, features = ["sync"] }
+deno_config = { workspace = true, features = ["sync"] }
+deno_graph.workspace = true
+deno_error.workspace = true
+deno_maybe_sync.workspace = true
+deno_npm_cache.workspace = true
+deno_npm_installer.workspace = true
+deno_npmrc.workspace = true
+deno_media_type.workspace = true
+deno_package_json = { workspace = true, features = ["sync"] }
+deno_path_util.workspace = true
+deno_resolver = { workspace = true, features = ["sync"] }
+deno_semver.workspace = true
+deno_terminal.workspace = true
+node_resolver = { workspace = true, features = ["graph", "sync"] }
+sys_traits.workspace = true
+
+anyhow.workspace = true
+aws-lc-rs.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+bytes.workspace = true
+faster-hex.workspace = true
+flate2.workspace = true
+futures.workspace = true
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+lazy-regex.workspace = true
+log.workspace = true
+open.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
+percent-encoding.workspace = true
+p256.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+spki.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+unicode-general-category.workspace = true
+url.workspace = true
+uuid.workspace = true
+wasmparser.workspace = true
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+sys_traits = { workspace = true, features = ["memory", "serde_json"] }
+

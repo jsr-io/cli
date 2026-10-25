@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 
+use anyhow::Error as AnyError;
+use anyhow::bail;
 use deno_ast::ModuleSpecifier;
 use deno_config::workspace::JsrPackageConfig;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 
 pub struct PublishOrderGraph {

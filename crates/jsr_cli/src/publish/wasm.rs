@@ -2,9 +2,9 @@
 
 use std::ops::Range;
 
-use deno_core::anyhow::Context;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
+use anyhow::Context;
+use anyhow::Error as AnyError;
+use anyhow::bail;
 
 /// The Wasm import section has a section id of `2`.
 const WASM_IMPORT_SECTION_ID: u8 = 0x02;

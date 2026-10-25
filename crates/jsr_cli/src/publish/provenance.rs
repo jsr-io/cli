@@ -3,18 +3,15 @@
 use std::collections::HashMap;
 use std::env;
 
+use anyhow::Error as AnyError;
+use anyhow::anyhow;
+use anyhow::bail;
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
 use aws_lc_rs::signature::KeyPair;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
-use deno_core::anyhow;
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use http_body_util::BodyExt;
 use once_cell::sync::Lazy;
 use p256::elliptic_curve;
@@ -25,6 +22,7 @@ use sha2::Digest;
 use spki::der::EncodePem;
 use spki::der::asn1;
 use spki::der::pem::LineEnding;
+use url::Url;
 
 use super::auth::gha_oidc_token;
 use super::auth::is_gha;

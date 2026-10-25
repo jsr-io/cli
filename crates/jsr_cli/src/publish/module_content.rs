@@ -4,19 +4,19 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_ast::TextChange;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_resolver::cache::LazyGraphSourceParser;
 use deno_resolver::cache::ParsedSourceCache;
 use deno_resolver::deno_json::CompilerOptionsResolver;
 use deno_resolver::workspace::ResolutionKind;
 use lazy_regex::Lazy;
+use url::Url;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
@@ -24,12 +24,12 @@ use super::unfurl::PositionOrSourceRangeRef;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
 use super::unfurl::SpecifierUnfurlerSys;
-use crate::sys::CliSys;
-use crate::tools::unfurl_utils::is_safe_unquoted_comment_value;
+use crate::Sys as CliSys;
+use crate::unfurl_utils::is_safe_unquoted_comment_value;
 
 fn jsx_pragma(name: &str, value: &str) -> Result<String, AnyError> {
   if !is_safe_unquoted_comment_value(value) {
-    return Err(deno_core::anyhow::anyhow!(
+    return Err(anyhow::anyhow!(
       "Cannot represent compiler option '{name}' as a generated JSX pragma."
     ));
   }

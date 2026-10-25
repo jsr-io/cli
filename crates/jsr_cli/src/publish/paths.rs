@@ -6,16 +6,15 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::Error as AnyError;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
-use deno_core::error::AnyError;
 use thiserror::Error;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
-use crate::args::CliOptions;
-use crate::sys::CliSys;
+use crate::Sys;
 
 /// A package path, like '/foo' or '/foo/bar'. The path is prefixed with a slash
 /// and does not end with a slash.
@@ -223,7 +222,7 @@ pub struct CollectedPublishPath {
 
 pub struct CollectPublishPathsOptions<'a> {
   pub root_dir: &'a Path,
-  pub cli_options: &'a CliOptions,
+  pub vendor_dir: Option<PathBuf>,
   pub file_patterns: FilePatterns,
   pub force_include_paths: Vec<PathBuf>,
   pub diagnostics_collector: &'a PublishDiagnosticsCollector,
@@ -234,7 +233,7 @@ pub fn collect_publish_paths(
 ) -> Result<Vec<CollectedPublishPath>, AnyError> {
   let diagnostics_collector = opts.diagnostics_collector;
   let publish_paths =
-    collect_paths(opts.cli_options, diagnostics_collector, opts.file_patterns);
+    collect_paths(opts.vendor_dir, diagnostics_collector, opts.file_patterns);
   let publish_paths_set = publish_paths.iter().cloned().collect::<HashSet<_>>();
   let capacity = publish_paths.len() + opts.force_include_paths.len();
   let mut paths = HashSet::with_capacity(capacity);
@@ -312,7 +311,7 @@ pub fn collect_publish_paths(
 }
 
 fn collect_paths(
-  cli_options: &CliOptions,
+  vendor_dir: Option<PathBuf>,
   diagnostics_collector: &PublishDiagnosticsCollector,
   file_patterns: FilePatterns,
 ) -> Vec<PathBuf> {
@@ -337,7 +336,7 @@ fn collect_paths(
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .set_vendor_folder(vendor_dir)
   .use_gitignore()
-  .collect_file_patterns(&CliSys::default(), &file_patterns)
+  .collect_file_patterns(&Sys::default(), &file_patterns)
 }

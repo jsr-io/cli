@@ -1,16 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::anyhow::Context;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::url::Url;
-use deno_runtime::deno_fetch;
+use anyhow::Context;
+use anyhow::Error as AnyError;
+use anyhow::bail;
 use deno_semver::jsr::JsrPackageReqReference;
 use serde::de::DeserializeOwned;
+use url::Url;
 
 use crate::http_util;
 use crate::http_util::HttpClient;
+use crate::http_util::ResBody;
 use crate::util::console::escape_terminal_control_chars;
 
 #[derive(serde::Deserialize)]
@@ -96,7 +95,7 @@ impl std::fmt::Debug for ApiError {
 impl std::error::Error for ApiError {}
 
 pub async fn parse_response<T: DeserializeOwned>(
-  response: http::Response<deno_fetch::ResBody>,
+  response: http::Response<ResBody>,
 ) -> Result<T, ApiError> {
   let status = response.status();
   let x_deno_ray = response
@@ -190,9 +189,7 @@ fn append_path_segments(
   url
     .path_segments_mut()
     .map_err(|_| {
-      deno_core::anyhow::anyhow!(
-        "Registry API URL cannot be used as a base URL"
-      )
+      anyhow::anyhow!("Registry API URL cannot be used as a base URL")
     })?
     .pop_if_empty()
     .extend(segments);
@@ -205,7 +202,7 @@ pub async fn get_package(
   scope: &str,
   package: &str,
   authorization: Option<&str>,
-) -> Result<http::Response<deno_fetch::ResBody>, AnyError> {
+) -> Result<http::Response<ResBody>, AnyError> {
   let package_url = get_package_api_url(registry_api_url, scope, package)?;
   let mut request = client.get(package_url)?;
   // The registry responds with a 404 for private packages unless the request
@@ -228,9 +225,7 @@ pub fn parse_package_name(name: &str) -> Result<(&str, &str), AnyError> {
   // Keep the explicit path-safety checks below even if the JSR grammar changes.
   let reference = JsrPackageReqReference::from_str(&format!("jsr:{name}@*"))
     .map_err(|_| {
-      deno_core::anyhow::anyhow!(
-        "package name must use the '@<scope>/<package>' format"
-      )
+      anyhow::anyhow!("package name must use the '@<scope>/<package>' format")
     })?;
   if reference.sub_path().is_some() {
     bail!("package name must not contain additional path segments");

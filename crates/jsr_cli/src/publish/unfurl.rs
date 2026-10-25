@@ -5,6 +5,8 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::util::is_builtin_node_module;
+use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRange;
@@ -24,8 +26,6 @@ use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
 use deno_config::workspace::WorkspaceDirectory;
-use deno_core::ModuleSpecifier;
-use deno_core::anyhow;
 use deno_graph::analysis::DependencyDescriptor;
 use deno_graph::analysis::DynamicTemplatePart;
 use deno_graph::analysis::StaticDependencyKind;
@@ -37,22 +37,21 @@ use deno_resolver::npm::NpmResolverSys;
 use deno_resolver::workspace::MappedResolution;
 use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_resolver::workspace::WorkspaceResolver;
-use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolverSys;
 
-use crate::node::CliNodeResolver;
-use crate::node::CliPackageJsonResolver;
-use crate::resolver::CliNpmReqResolver;
-use crate::sys::CliSys;
-use crate::tools::unfurl_utils::ImportMetaResolveCollector;
-use crate::tools::unfurl_utils::SpecifierTextContext;
-use crate::tools::unfurl_utils::dynamic_argument_prefix_range;
-use crate::tools::unfurl_utils::specifier_text_change;
-use crate::tools::unfurl_utils::to_range;
+use crate::NodeResolver as CliNodeResolver;
+use crate::NpmReqResolver as CliNpmReqResolver;
+use crate::PackageJsonResolver as CliPackageJsonResolver;
+use crate::Sys as CliSys;
+use crate::unfurl_utils::ImportMetaResolveCollector;
+use crate::unfurl_utils::SpecifierTextContext;
+use crate::unfurl_utils::dynamic_argument_prefix_range;
+use crate::unfurl_utils::specifier_text_change;
+use crate::unfurl_utils::to_range;
 
 #[derive(Debug, Clone)]
 pub enum SpecifierUnfurlerDiagnostic {
@@ -1177,16 +1176,16 @@ mod tests {
 
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
-  use deno_core::serde_json::json;
-  use deno_core::url::Url;
   use deno_graph::ast::ParserModuleAnalyzer;
   use deno_resolver::factory::ResolverFactory;
   use deno_resolver::factory::ResolverFactoryOptions;
   use deno_resolver::factory::WorkspaceFactory;
   use deno_resolver::factory::WorkspaceFactoryOptions;
   use pretty_assertions::assert_eq;
+  use serde_json::json;
   use sys_traits::EnvCurrentDir;
   use sys_traits::impls::InMemorySys;
+  use url::Url;
 
   use super::*;
 

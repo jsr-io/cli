@@ -1,70 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-
 use deno_ast::ModuleSpecifier;
 use deno_ast::diagnostics::Diagnostic;
 use deno_graph::ModuleGraph;
 use deno_graph::fast_check::FastCheckDiagnostic;
-use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::diagnostic::LintDiagnosticDetails;
-use deno_lint::diagnostic::LintDiagnosticRange;
-use deno_lint::diagnostic::LintDocsUrl;
-use deno_lint::tags;
-
-use super::PackageLintRule;
-
-const CODE: &str = "no-slow-types";
-
-#[derive(Debug)]
-pub struct NoSlowTypesRule;
-
-impl PackageLintRule for NoSlowTypesRule {
-  fn code(&self) -> &'static str {
-    CODE
-  }
-
-  fn tags(&self) -> tags::Tags {
-    &[tags::JSR]
-  }
-
-  fn help_docs_url(&self) -> Cow<'static, str> {
-    Cow::Borrowed("https://jsr.io/docs/about-slow-types")
-  }
-
-  fn lint_package(
-    &self,
-    graph: &ModuleGraph,
-    entrypoints: &[ModuleSpecifier],
-  ) -> Vec<LintDiagnostic> {
-    collect_no_slow_type_diagnostics(graph, entrypoints)
-      .into_iter()
-      .map(|d| LintDiagnostic {
-        specifier: d.specifier().clone(),
-        range: d.range().map(|range| LintDiagnosticRange {
-          text_info: range.text_info.clone(),
-          range: range.range,
-          description: d.range_description().map(|r| r.to_string()),
-        }),
-        details: LintDiagnosticDetails {
-          message: d.message().to_string(),
-          code: CODE.to_string(),
-          hint: d.hint().map(|h| h.to_string()),
-          info: d
-            .info()
-            .iter()
-            .map(|info| Cow::Owned(info.to_string()))
-            .collect(),
-          fixes: vec![],
-          custom_docs_url: d
-            .docs_url()
-            .map(|u| LintDocsUrl::Custom(u.into_owned()))
-            .unwrap_or_default(),
-        },
-      })
-      .collect()
-  }
-}
 
 /// Collects diagnostics from the module graph for the
 /// given package's export URLs.

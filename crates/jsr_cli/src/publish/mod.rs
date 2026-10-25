@@ -8,6 +8,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use anyhow::Context;
+use anyhow::Error as AnyError;
+use anyhow::bail;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use deno_ast::ModuleSpecifier;
@@ -15,25 +18,20 @@ use deno_ast::SourceTextInfo;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::Workspace;
-use deno_core::anyhow::Context;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::stream::FuturesUnordered;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
-use deno_core::serde_json::json;
-use deno_core::url::Url;
 use deno_resolver::collections::FolderScopedMap;
-use deno_runtime::deno_fetch;
 use deno_semver::Version;
 use deno_terminal::colors;
+use futures::FutureExt;
+use futures::StreamExt;
+use futures::future::LocalBoxFuture;
+use futures::stream::FuturesUnordered;
 use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
+use serde_json::json;
 use sha2::Digest;
+use url::Url;
 
 use self::diagnostics::PublishDiagnostic;
 use self::diagnostics::PublishDiagnosticsCollector;
@@ -42,21 +40,16 @@ use self::graph::GraphDiagnosticsCollector;
 use self::module_content::ModuleContentProvider;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::PublishFlags;
-use crate::args::jsr_api_url;
-use crate::args::jsr_url;
-use crate::factory::CliFactory;
+use crate::Sys;
+use crate::factory::FactoryOptions;
+use crate::factory::PublishFactory;
+use crate::git::check_if_git_repo_dirty;
 use crate::graph_util::CreatePublishGraphOptions;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
+use crate::no_slow_types::collect_no_slow_type_diagnostics;
 use crate::registry;
-use crate::tools::lint::collect_no_slow_type_diagnostics;
-use crate::type_checker::CheckOptions;
-use crate::type_checker::TypeChecker;
 use crate::util::display::human_size;
-use crate::util::git::check_if_git_repo_dirty;
 
 mod auth;
 
@@ -75,17 +68,37 @@ use auth::get_auth_method;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
-pub async fn publish(
-  flags: Arc<Flags>,
-  publish_flags: PublishFlags,
-) -> Result<(), AnyError> {
-  let cli_factory = CliFactory::from_flags(flags);
+#[derive(Debug, Clone, Default)]
+pub struct PublishOptions {
+  pub cwd: PathBuf,
+  /// Path to the config file, relative to `cwd`. Discovered when `None`.
+  pub config: Option<PathBuf>,
+  pub token: Option<String>,
+  pub dry_run: bool,
+  pub allow_slow_types: bool,
+  pub allow_dirty: bool,
+  pub no_provenance: bool,
+  pub set_version: Option<String>,
+  pub sloppy_imports: bool,
+  pub unstable_raw_imports: bool,
+}
 
-  let cli_options = cli_factory.cli_options()?;
-  let directory_path = cli_options.initial_cwd();
-  let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
+pub async fn publish(options: PublishOptions) -> Result<(), AnyError> {
+  let factory = PublishFactory::new(
+    Sys::default(),
+    FactoryOptions {
+      cwd: options.cwd.clone(),
+      config: options.config.clone(),
+      sloppy_imports: options.sloppy_imports,
+      unstable_raw_imports: options.unstable_raw_imports,
+    },
+  )?;
+
+  let directory_path = &options.cwd;
+  let start_dir = factory.workspace_directory()?;
+  let mut publish_configs = start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
-    match cli_options.start_dir.member_deno_json() {
+    match start_dir.member_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package() || !deno_json.should_publish());
         if deno_json.json.name.is_none() {
@@ -108,7 +121,7 @@ pub async fn publish(
     }
   }
 
-  if let Some(version) = &publish_flags.set_version {
+  if let Some(version) = &options.set_version {
     if publish_configs.len() > 1 {
       bail!(
         "Cannot use --set-version when publishing a workspace. Change your cwd to an individual package instead."
@@ -117,24 +130,27 @@ pub async fn publish(
     if let Some(publish_config) = publish_configs.get_mut(0) {
       let mut config_file = publish_config.config_file.as_ref().clone();
       config_file.json.version = Some(version.clone());
-      publish_config.config_file = Arc::new(config_file);
+      publish_config.config_file = deno_maybe_sync::new_rc(config_file);
     }
   }
 
   validate_publish_configs(&publish_configs)?;
 
-  let auth_method =
-    get_auth_method(publish_flags.token, publish_flags.dry_run)?;
+  let auth_method = get_auth_method(options.token.clone(), options.dry_run)?;
+  let http_client = factory.http_client_provider().get_or_create()?;
+
+  let registry_api_url = factory.jsr_api_url();
+  let registry_url = factory.jsr_url().clone();
 
   // Bail out early if the version is already published, before doing the
-  // expensive type checking and tarball preparation. Already-published
-  // versions are skipped with a warning (rather than erroring) so that
-  // re-running `deno publish` after a partial or concurrent publish still
-  // succeeds, matching the idempotent behavior of the publish step itself.
-  if !publish_flags.dry_run {
+  // expensive tarball preparation. Already-published versions are skipped
+  // with a warning (rather than erroring) so that re-running publish after a
+  // partial or concurrent publish still succeeds, matching the idempotent
+  // behavior of the publish step itself.
+  if !options.dry_run {
     publish_configs = filter_out_published_packages(
-      &cli_factory.http_client_provider().get_or_create()?,
-      jsr_api_url(),
+      &http_client,
+      &registry_api_url,
       publish_configs,
     )
     .await?;
@@ -148,36 +164,35 @@ pub async fn publish(
     }
   }
 
+  let resolver_factory = factory.resolver_factory();
   let specifier_unfurler = SpecifierUnfurler::new(
-    cli_factory.node_resolver().await?.clone(),
-    cli_factory.npm_req_resolver().await?.clone(),
-    cli_factory.pkg_json_resolver()?.clone(),
-    cli_factory.cli_options().unwrap().start_dir.clone(),
-    cli_factory.workspace_resolver().await?.clone(),
+    resolver_factory.node_resolver()?.clone(),
+    resolver_factory.npm_req_resolver()?.clone(),
+    resolver_factory.pkg_json_resolver().clone(),
+    start_dir.clone(),
+    resolver_factory.workspace_resolver().await?.clone(),
   );
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
-  let parsed_source_cache = cli_factory.parsed_source_cache()?;
+  let parsed_source_cache = resolver_factory.parsed_source_cache();
   let module_content_provider = Arc::new(ModuleContentProvider::new(
     parsed_source_cache.clone(),
     specifier_unfurler,
-    cli_factory.sys(),
-    cli_factory.compiler_options_resolver()?.clone(),
+    factory.sys().clone(),
+    resolver_factory.compiler_options_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
     GraphDiagnosticsCollector::new(
-      cli_factory.npm_resolver().await?.clone(),
+      resolver_factory.npm_resolver()?.clone(),
       parsed_source_cache.clone(),
     ),
-    cli_factory.module_graph_creator().await?.clone(),
-    cli_factory.type_checker().await?.clone(),
-    cli_options.clone(),
+    &factory,
     module_content_provider,
   );
 
   let prepared_data = publish_preparer
     .prepare_packages_for_publishing(
-      publish_flags.allow_slow_types,
+      options.allow_slow_types,
       &diagnostics_collector,
       publish_configs,
     )
@@ -189,12 +204,9 @@ pub async fn publish(
     bail!("No packages to publish");
   }
 
-  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK")
-    .ok()
-    .is_none()
-    && !publish_flags.allow_dirty
-    && let Some(dirty_text) =
-      check_if_git_repo_dirty(cli_options.initial_cwd()).await
+  if std::env::var("DENO_TESTING_DISABLE_GIT_CHECK").is_err()
+    && !options.allow_dirty
+    && let Some(dirty_text) = check_if_git_repo_dirty(&options.cwd).await
   {
     log::error!("\nUncommitted changes:\n\n{}\n", dirty_text);
     bail!(
@@ -202,7 +214,7 @@ pub async fn publish(
     );
   }
 
-  if publish_flags.dry_run {
+  if options.dry_run {
     for (_, package) in prepared_data.package_by_name {
       log::info!(
         "{} of {} with files:",
@@ -218,11 +230,13 @@ pub async fn publish(
   }
 
   perform_publish(
-    &cli_factory.http_client_provider().get_or_create()?,
+    &http_client,
+    &registry_api_url,
+    &registry_url,
     prepared_data.publish_order_graph,
     prepared_data.package_by_name,
     auth_method,
-    !publish_flags.no_provenance,
+    !options.no_provenance,
   )
   .await?;
 
@@ -242,7 +256,7 @@ fn validate_publish_configs(
 
     let version =
       config.config_file.json.version.as_deref().ok_or_else(|| {
-        deno_core::anyhow::anyhow!(
+        anyhow::anyhow!(
           "{} is missing 'version' field",
           config.config_file.specifier
         )
@@ -284,7 +298,7 @@ async fn filter_out_published_packages(
     )
     .await
   });
-  let results = deno_core::futures::future::join_all(checks).await;
+  let results = futures::future::join_all(checks).await;
 
   let mut remaining = Vec::with_capacity(publish_configs.len());
   for (config, already_published) in publish_configs.into_iter().zip(results) {
@@ -322,27 +336,21 @@ struct PreparePackagesData {
   package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
 }
 
-struct PublishPreparer {
+struct PublishPreparer<'a> {
   graph_diagnostics_collector: GraphDiagnosticsCollector,
-  module_graph_creator: Arc<ModuleGraphCreator>,
-  type_checker: Arc<TypeChecker>,
-  cli_options: Arc<CliOptions>,
+  factory: &'a PublishFactory,
   module_content_provider: Arc<ModuleContentProvider>,
 }
 
-impl PublishPreparer {
+impl<'a> PublishPreparer<'a> {
   pub fn new(
     graph_diagnostics_collector: GraphDiagnosticsCollector,
-    module_graph_creator: Arc<ModuleGraphCreator>,
-    type_checker: Arc<TypeChecker>,
-    cli_options: Arc<CliOptions>,
+    factory: &'a PublishFactory,
     module_content_provider: Arc<ModuleContentProvider>,
   ) -> Self {
     Self {
       graph_diagnostics_collector,
-      module_graph_creator,
-      type_checker,
-      cli_options,
+      factory,
       module_content_provider,
     }
   }
@@ -381,10 +389,10 @@ impl PublishPreparer {
             .with_context(|| format!("Failed preparing '{}'.", member.name))?;
           Ok::<_, AnyError>((member.name, package))
         }
-        .boxed()
+        .boxed_local()
       })
       .collect::<Vec<_>>();
-    let results = deno_core::futures::future::join_all(results).await;
+    let results = futures::future::join_all(results).await;
     for result in results {
       let (package_name, package) = result?;
       package_by_name.insert(package_name, package);
@@ -400,15 +408,13 @@ impl PublishPreparer {
     allow_slow_types: bool,
     diagnostics_collector: &PublishDiagnosticsCollector,
     package_configs: &[JsrPackageConfig],
-  ) -> Result<Arc<deno_graph::ModuleGraph>, deno_core::anyhow::Error> {
+  ) -> Result<Arc<deno_graph::ModuleGraph>, anyhow::Error> {
     let build_fast_check_graph = !allow_slow_types;
-    let graph = self
-      .module_graph_creator
+    let graph = ModuleGraphCreator::new(self.factory)
       .create_publish_graph(CreatePublishGraphOptions {
         packages: package_configs,
         build_fast_check_graph,
         validate_graph: true,
-        skip_unanalyzable_exports: false,
       })
       .await?;
 
@@ -432,7 +438,7 @@ impl PublishPreparer {
     } else if std::env::var("DENO_INTERNAL_FAST_CHECK_OVERWRITE").as_deref()
       == Ok("1")
     {
-      if check_if_git_repo_dirty(self.cli_options.initial_cwd())
+      if check_if_git_repo_dirty(&self.factory.options().cwd)
         .await
         .is_some()
       {
@@ -471,42 +477,9 @@ impl PublishPreparer {
         }
       }
 
-      // skip type checking the slow type graph if there are any errors because
-      // errors like remote modules existing will cause type checking to crash
-      if diagnostics_collector.has_error() {
-        Ok(Arc::new(graph))
-      } else {
-        // fast check passed, type check the output as a temporary measure
-        // until we know that it's reliable and stable
-        let mut diagnostics_by_folder = self.type_checker.check_diagnostics(
-          graph,
-          CheckOptions {
-            build_fast_check_graph: false, // already built
-            lib: self.cli_options.ts_type_lib_window(),
-            reload: self.cli_options.reload_flag(),
-            type_check_mode: self.cli_options.type_check_mode(),
-          },
-        )?;
-        // ignore unused (type) parameter diagnostics that may occur due to fast
-        // check not having function body implementations
-        for result in diagnostics_by_folder.by_ref() {
-          let check_diagnostics = result?;
-          let check_diagnostics =
-            check_diagnostics.filter(|d| d.include_when_remote());
-          if check_diagnostics.has_diagnostic() {
-            bail!(
-              concat!(
-                "Failed ensuring public API type output is valid.\n\n",
-                "{:#}\n\n",
-                "You may have discovered a bug in Deno. Please open an issue at: ",
-                "https://github.com/denoland/deno/issues/"
-              ),
-              check_diagnostics
-            );
-          }
-        }
-        Ok(diagnostics_by_folder.into_graph())
-      }
+      // the package isn't type checked here. `deno publish` type checks
+      // before running it
+      Ok(Arc::new(graph))
     }
   }
 
@@ -520,18 +493,16 @@ impl PublishPreparer {
     let config_path = deno_json.specifier.to_file_path().unwrap();
     let root_dir = config_path.parent().unwrap().to_path_buf();
     let version = deno_json.json.version.clone().ok_or_else(|| {
-      deno_core::anyhow::anyhow!(
-        "{} is missing 'version' field",
-        deno_json.specifier
-      )
+      anyhow::anyhow!("{} is missing 'version' field", deno_json.specifier)
     })?;
     let (scope, name_no_scope) = registry::parse_package_name(&package.name)?;
     let file_patterns = package.member_dir.to_publish_config()?.files;
 
-    let tarball = deno_core::unsync::spawn_blocking({
+    let workspace = self.factory.workspace_directory()?.workspace.clone();
+    let vendor_dir = workspace.vendor_dir_path().cloned();
+    let tarball = tokio::task::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
       let module_content_provider = self.module_content_provider.clone();
-      let cli_options = self.cli_options.clone();
       let config_path = config_path.clone();
       let config_url = deno_json.specifier.clone();
       let has_license_field = package.license.is_some();
@@ -542,14 +513,13 @@ impl PublishPreparer {
         let mut publish_paths =
           paths::collect_publish_paths(paths::CollectPublishPathsOptions {
             root_dir: &root_dir,
-            cli_options: &cli_options,
+            vendor_dir,
             diagnostics_collector: &diagnostics_collector,
             file_patterns,
             force_include_paths: vec![config_path],
           })?;
         let all_jsr_packages = FolderScopedMap::from_map(
-          cli_options
-            .workspace()
+          workspace
             .jsr_packages()
             .map(|pkg| (pkg.member_dir.dir_url().clone(), pkg))
             .collect(),
@@ -567,7 +537,7 @@ impl PublishPreparer {
           && !has_license_file(publish_paths.iter().map(|p| &p.specifier))
         {
           if let Some(license_path) =
-            resolve_license_file(&root_dir, cli_options.workspace())
+            resolve_license_file(&root_dir, &workspace)
           {
             // force including the license file from the package or workspace root
             publish_paths.push(CollectedPublishPath {
@@ -943,14 +913,13 @@ async fn ensure_scopes_and_packages_exist(
 
 async fn perform_publish(
   http_client: &HttpClient,
+  registry_api_url: &Url,
+  registry_url: &Url,
   mut publish_order_graph: PublishOrderGraph,
   mut prepared_package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
   auth_method: AuthMethod,
   provenance: bool,
 ) -> Result<(), AnyError> {
-  let registry_api_url = jsr_api_url();
-  let registry_url = jsr_url();
-
   let packages = prepared_package_by_name
     .values()
     .cloned()
@@ -1086,7 +1055,7 @@ fn combine_publish_errors(mut errors: Vec<AnyError>) -> AnyError {
     // "Failed to publish @scope/name: <cause>").
     message.push_str(&format!("\n\n* {:#}", err));
   }
-  deno_core::anyhow::anyhow!(message)
+  anyhow::anyhow!(message)
 }
 
 async fn publish_package(
@@ -1114,7 +1083,7 @@ async fn publish_package(
     Some(&config_path),
   )?;
 
-  let body = deno_fetch::ReqBody::full(package.tarball.bytes.clone());
+  let body = package.tarball.bytes.clone();
   let response = http_client
     .post(url, body)?
     .header(
@@ -1196,7 +1165,7 @@ async fn publish_package(
   // Enable provenance by default on Github actions with OIDC token
   if enable_provenance {
     // Get the version manifest from the registry
-    let meta_url = jsr_url().join(&format!(
+    let meta_url = registry_url.join(&format!(
       "@{}/{}/{}_meta.json",
       package.scope, package.package, package.version
     ))?;
@@ -1498,10 +1467,7 @@ fn verify_version_manifest(
 
   for (specifier, expected) in &manifest.exports {
     let actual = package.exports.get(specifier).ok_or_else(|| {
-      deno_core::anyhow::anyhow!(
-        "Export {} not found in the package",
-        specifier
-      )
+      anyhow::anyhow!("Export {} not found in the package", specifier)
     })?;
     if actual != expected {
       bail!(
