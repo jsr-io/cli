@@ -1,71 +1,91 @@
 # jsr
 
-Command line tools for [JSR](https://jsr.io), in two forms:
+The command line tool for [JSR](https://jsr.io): it manages the JSR dependencies
+of npm, yarn, pnpm and bun projects, and publishes and packs packages.
 
-- The [`jsr`](https://www.npmjs.com/package/jsr) npm package, run with
-  `npx jsr`. It manages JSR dependencies of npm, yarn, pnpm and bun projects,
-  and publishes packages.
-- The `jsr` binary, from the
-  [GitHub releases](https://github.com/jsr-io/cli/releases). It publishes and
-  packs packages. Builds exist for Linux (glibc and musl), macOS and Windows,
-  each on x64 and arm64.
+## Install
 
-`npx jsr publish` downloads the binary of its own version and runs it.
+Run it from npm, without installing:
+
+```sh
+npx jsr <command>
+```
+
+The [`jsr`](https://www.npmjs.com/package/jsr) npm package downloads the `jsr`
+binary of its version and runs it. You can also download the binary from the
+[GitHub releases](https://github.com/jsr-io/cli/releases). It's built for Linux
+(glibc and musl), macOS and Windows, each on x64 and arm64.
 
 ## Commands
 
-| Command                    | npm package | Binary | Description                                     |
-| -------------------------- | ----------- | ------ | ----------------------------------------------- |
-| `add`, `install`, `i`      | yes         |        | Add JSR packages to `package.json` and install. |
-| `remove`, `uninstall`, `r` | yes         |        | Remove JSR packages.                            |
-| `info`, `show`, `view`     | yes         |        | Show information about a JSR package.           |
-| `run <script>`, `<script>` | yes         |        | Run a `package.json` script.                    |
-| `publish`                  | yes         | yes    | Publish the package or workspace.               |
-| `pack`                     |             | yes    | Create an npm tarball of the package.           |
+| Command                    | Description                                       |
+| -------------------------- | ------------------------------------------------- |
+| `add`, `install`, `i`      | Add JSR packages to the package.json and install. |
+| `remove`, `uninstall`, `r` | Remove JSR packages from the package.json.        |
+| `info`, `show`, `view`     | Show information about a JSR package.             |
+| `run <script>`, `<script>` | Run a script from the package.json.               |
+| `publish`                  | Publish the package or workspace.                 |
+| `pack`                     | Create an npm tarball of the package.             |
 
 ```sh
 # add a dependency, with the project's package manager
-npx jsr add @std/encoding
+jsr add @std/encoding
 
 # check everything without uploading, then publish
-npx jsr publish --dry-run
-npx jsr publish
-
-# with the binary
+jsr publish --dry-run
 jsr publish
+
+# create an npm tarball
 jsr pack
 ```
 
-`npx jsr --help`, `jsr publish --help` and `jsr pack --help` list the options.
+`jsr --help` and `jsr <command> --help` list the options.
+
+### Adding packages
+
+`jsr add` detects the package manager from the lockfile, or use `--npm`,
+`--yarn`, `--pnpm` or `--bun`. It points the `@jsr` scope at
+`https://npm.jsr.io` in the `.npmrc` (yarn berry's config, or `bunfig.toml` for
+bun before 1.1.18), and adds packages under their JSR name:
+
+```json
+{
+  "dependencies": {
+    "@std/encoding": "npm:@jsr/std__encoding@^1.0.0"
+  }
+}
+```
 
 ### Publishing
 
-`jsr publish` reads the package from `jsr.json(c)` or `deno.json(c)`. It opens
-the browser to authenticate, unless you pass `--token`. On GitHub Actions it
-authenticates with OIDC and adds a provenance attestation; pass
-`--no-provenance` to skip the attestation.
+`jsr publish` reads the package from `jsr.json(c)` or `deno.json(c)`. In a
+project with a package.json and no deno.json, imports without file extensions
+are resolved. It opens the browser to authenticate, unless you pass `--token`.
+On GitHub Actions it authenticates with OIDC and adds a provenance attestation;
+pass `--no-provenance` to skip the attestation.
 
 **`jsr` doesn't type check.** Run `tsc` or `deno check` before publishing.
 
 ## Environment variables
 
-| Variable        | Description                                                         |
-| --------------- | ------------------------------------------------------------------- |
-| `JSR_URL`       | Registry to publish to. Defaults to `https://jsr.io`.               |
-| `JSR_LOG`       | Log filter, for example `debug`.                                    |
-| `JSR_LOG_STYLE` | `auto`, `always` or `never` color in log output.                    |
-| `DENO_DIR`      | Cache for downloaded dependencies.                                  |
-| `JSR_BIN_PATH`  | npm package only: run this `jsr` binary instead of downloading one. |
+| Variable        | Description                                                    |
+| --------------- | -------------------------------------------------------------- |
+| `JSR_URL`       | Registry to publish to. Defaults to `https://jsr.io`.          |
+| `JSR_LOG`       | Log filter, for example `debug`.                               |
+| `JSR_LOG_STYLE` | `auto`, `always` or `never` color in log output.               |
+| `DENO_DIR`      | Cache for downloaded dependencies.                             |
+| `JSR_BIN_PATH`  | npm package: run this `jsr` binary instead of downloading one. |
 
 ## Development
 
 The repository contains:
 
 - `cli`: the `jsr` binary, which parses arguments and sets up logging.
-- `src`: the `jsr_cli` crate with the publish and pack logic, copied from
-  `cli/tools/publish` and `cli/tools/pack` in Deno 2.9.
-- `npm`: the [`jsr`](https://www.npmjs.com/package/jsr) npm package, moved here
+- `src`: the `jsr_cli` crate. `publish` and `pack` were copied from
+  `cli/tools/publish` and `cli/tools/pack` in Deno 2.9, `npm_project` was ported
   from [jsr-io/jsr-npm](https://github.com/jsr-io/jsr-npm).
+- `npm`: the [`jsr`](https://www.npmjs.com/package/jsr) npm package, which
+  downloads and runs the binary.
 - `tests`: Deno's publish and pack tests, and mock JSR and npm registries.
 
 Code copied from Deno or jsr-npm lands in a `chore: copy ...` commit unmodified,
@@ -83,7 +103,7 @@ of them use `deno` from the `PATH` to set themselves up. To run one:
 cargo test --test specs -- publish::dry_run
 ```
 
-The npm package's tests need a `jsr` binary:
+The npm package's tests run `jsr` commands through it, with a local binary:
 
 ```sh
 cargo build --bin jsr

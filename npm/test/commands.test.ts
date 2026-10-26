@@ -5,23 +5,19 @@ import { describe, it } from "node:test";
 import {
   type DenoJson,
   enableYarnBerry,
+  exec,
+  isBunNpmrcSupported,
   isDirectory,
   isFile,
-  runInTempDir,
-  runJsr,
-  withTempEnv,
-} from "./test_utils.ts";
-import {
-  exec,
-  ExecError,
   type PkgJson,
   readJson,
   readTextFile,
-  styleText,
+  runInTempDir,
+  runJsr,
+  withTempEnv,
   writeJson,
   writeTextFile,
-} from "../src/utils.ts";
-import { Bun } from "../src/pkg_manager.ts";
+} from "./test_utils.ts";
 
 describe("general", () => {
   it("exit 1 on unknown command", async () => {
@@ -441,9 +437,7 @@ describe("install", () => {
           "bun lockfile not created",
         );
 
-        const bun = new Bun(dir);
-
-        if (await bun.isNpmrcSupported()) {
+        if (await isBunNpmrcSupported(dir)) {
           const npmrcPath = path.join(dir, ".npmrc");
           const npmRc = await readTextFile(npmrcPath);
           assert.ok(
@@ -464,8 +458,7 @@ describe("install", () => {
       async (dir) => {
         await runJsr(["i", "--bun", "@std/encoding@0.216.0"], dir);
 
-        const bun = new Bun(dir);
-        if (await bun.isNpmrcSupported()) {
+        if (await isBunNpmrcSupported(dir)) {
           const npmrcPath = path.join(dir, ".npmrc");
           const npmRc = await readTextFile(npmrcPath);
           assert.ok(

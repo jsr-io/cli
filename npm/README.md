@@ -44,9 +44,14 @@ commands.
 
 - `add`, `install`, `i`: Adds a JSR package to your project.
 - `remove`, `uninstall`, `r`: Remove a JSR package from your project.
+- `info`, `show`, `view`: Show information about a JSR package.
+- `run <script>`: Run a script from the `package.json`.
+- `<script>`: Run a script from the `package.json` without `run` command.
 - `publish`: Publish `package.json` libraries to JSR.
-- `run <script>`: Run a JSR package script.
-- `<script>`: Run a JSR package script without `run` command.
+- `pack`: Create an npm tarball of the package.
+
+The package downloads the [`jsr` binary](https://github.com/jsr-io/cli) of its
+version on first use and runs it. Set `JSR_BIN_PATH` to use another binary.
 
 ## Limitations
 
