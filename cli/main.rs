@@ -18,12 +18,8 @@ use jsr_cli::publish::PublishOptions;
 
 /// The JSR command line tool.
 #[derive(Parser)]
-#[command(name = "jsr", version, disable_version_flag = true)]
+#[command(name = "jsr", version)]
 struct Cli {
-  /// Print version
-  #[arg(short = 'v', short_alias = 'V', long, action = clap::ArgAction::Version)]
-  version: (),
-
   /// Set log level
   #[arg(
     short = 'L',
