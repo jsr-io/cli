@@ -20,3 +20,20 @@ deno_terminal.workspace = true
 env_logger.workspace = true
 log.workspace = true
 tokio.workspace = true
+
+[[test]]
+name = "specs"
+path = "../tests/specs/mod.rs"
+harness = false
+
+[[test]]
+name = "publish"
+path = "../tests/integration/publish_tests.rs"
+
+[dev-dependencies]
+test_util = { path = "../tests/util" }
+
+anyhow.workspace = true
+file_test_runner = "0.12.1"
+serde.workspace = true
+serde_json.workspace = true

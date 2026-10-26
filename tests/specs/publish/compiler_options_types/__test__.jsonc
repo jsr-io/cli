@@ -5,6 +5,8 @@
       "output": "publish.out"
     },
     "types_missing": {
+      // expects a type checking error, and jsr doesn't type check
+      "ignore": true,
       "args": "publish --dry-run --config=deno_no_types.json",
       "output": "publish_no_types.out",
       "exitCode": 1

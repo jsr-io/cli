@@ -1,17 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
-use std::rc::Rc;
-use std::sync::Arc;
 
 use anyhow::Context;
-use file_test_runner::NO_CAPTURE;
 use file_test_runner::TestResult;
 use file_test_runner::collection::CollectOptions;
 use file_test_runner::collection::CollectTestsError;
@@ -25,9 +21,6 @@ use serde::Deserialize;
 use test_util::IS_CI;
 use test_util::PathRef;
 use test_util::TestContextBuilder;
-use test_util::test_runner::FlakyTestTracker;
-use test_util::test_runner::Parallelism;
-use test_util::test_runner::run_maybe_flaky_test;
 use test_util::tests_path;
 
 const MANIFEST_FILE_NAME: &str = "__test__.jsonc";
@@ -172,6 +165,8 @@ struct MultiStepMetaData {
   /// Whether the temporary directory should be symlinked to another path.
   #[serde(default)]
   pub symlinked_temp_dir: bool,
+  // accepted for compatibility with Deno's tests, but not retried
+  #[allow(dead_code, reason = "not used")]
   #[serde(default)]
   pub flaky: bool,
   /// The base environment to use for the test.
@@ -187,7 +182,9 @@ struct MultiStepMetaData {
   pub steps: Vec<StepMetaData>,
   #[serde(default)]
   pub ignore: bool,
-  /// Timeout in seconds for each step. Defaults to 300 (5 minutes).
+  /// Timeout in seconds for each step. Accepted for compatibility with
+  /// Deno's tests, but not enforced.
+  #[allow(dead_code, reason = "not used")]
   #[serde(default)]
   pub timeout: Option<u64>,
   #[serde(default)]
@@ -264,33 +261,6 @@ struct StepMetaData {
 }
 
 pub fn main() {
-  // When running from Claude Code, require a test filter (additional arg)
-  // to prevent accidentally running the entire spec test suite.
-  if std::env::var_os("CLAUDE_CODE_ENTRYPOINT").is_some() {
-    let has_arg = std::env::args().skip(1).len() > 0;
-    if !has_arg {
-      panic!(
-        "Running the entire spec test suite from Claude Code is not allowed. \
-         Please provide a test filter, e.g.: ./x test-spec my_test_name"
-      );
-    }
-  }
-
-  let ci_hash = test_util::hash::check_ci_hash("specs", |hasher| {
-    let tests = test_util::tests_path();
-    hasher
-      .hash_dir(tests.join("specs"))
-      .hash_dir(tests.join("util"))
-      .hash_dir(tests.join("testdata"))
-      .hash_dir(tests.join("registry"))
-      .hash_file(test_util::deno_exe_path())
-      .hash_file(test_util::test_server_path())
-      .hash_file(test_util::denort_exe_path());
-  });
-  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
-    return;
-  }
-
   let root_category =
     collect_tests_or_exit::<serde_json::Value>(CollectOptions {
       base: tests_path().join("specs").to_path_buf(),
@@ -304,49 +274,21 @@ pub fn main() {
     })
     .into_flat_category();
 
-  let root_category =
-    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
-      test_util::test_runner::filter_to_shard(root_category, &shard)
-    } else {
-      root_category
-    };
-
   if root_category.is_empty() {
     return; // all tests filtered out
   }
 
-  if test_util::test_runner::print_tests_if_list_flag(&root_category) {
-    return;
-  }
-
-  let _http_guard = test_util::http_server();
-  let parallelism = Parallelism::default();
-  let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
   file_test_runner::run_tests(
     &root_category,
-    file_test_runner::RunOptions {
-      parallelism: parallelism.max_parallelism(),
-      reporter: test_util::test_runner::get_test_reporter(
-        "specs",
-        flaky_test_tracker.clone(),
-      ),
-    },
-    move |test| run_test(test, &flaky_test_tracker, &parallelism),
+    file_test_runner::RunOptions::default(),
+    run_test,
   );
-  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
-    pending.commit();
-  }
 }
 
-fn run_test(
-  test: &CollectedTest<serde_json::Value>,
-  flaky_test_tracker: &FlakyTestTracker,
-  parallelism: &Parallelism,
-) -> TestResult {
+fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   let cwd = PathRef::new(&test.path).parent();
   let metadata_value = test.data.clone();
-  let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
-  let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
+  TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
     let metadata = deserialize_value(metadata_value);
     let substs = variant_substitutions(&BTreeMap::new(), &metadata.variants);
     let if_cond = metadata
@@ -357,88 +299,35 @@ fn run_test(
       TestResult::Ignored
     } else if let Some(repeat) = metadata.repeat {
       for _ in 0..repeat {
-        let result = run_test_inner(
-          test,
-          &metadata,
-          &cwd,
-          diagnostic_logger.clone(),
-          flaky_test_tracker,
-          parallelism,
-        );
+        let result = run_test_inner(&metadata, &cwd);
         if result.is_failed() {
           return result;
         }
       }
       TestResult::Passed { duration: None }
     } else {
-      run_test_inner(
-        test,
-        &metadata,
-        &cwd,
-        diagnostic_logger.clone(),
-        flaky_test_tracker,
-        parallelism,
-      )
+      run_test_inner(&metadata, &cwd)
     }
-  }));
-  match result {
-    TestResult::Failed {
-      duration,
-      output: panic_output,
-    } => {
-      let mut output = diagnostic_logger.borrow().clone();
-      output.push(b'\n');
-      output.extend(panic_output);
-      TestResult::Failed { duration, output }
-    }
-    TestResult::Passed { .. }
-    | TestResult::Ignored
-    | TestResult::SubTests { .. } => result,
-  }
+  }))
 }
 
-fn run_test_inner(
-  test: &CollectedTest<serde_json::Value>,
-  metadata: &MultiStepMetaData,
-  cwd: &PathRef,
-  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
-  flaky_test_tracker: &FlakyTestTracker,
-  parallelism: &Parallelism,
-) -> TestResult {
-  let run_fn = || {
-    let context =
-      test_context_from_metadata(metadata, cwd, diagnostic_logger.clone());
-    for step in metadata
-      .steps
-      .iter()
-      .filter(|s| should_run(s.if_cond.as_deref()))
-    {
-      let run_func = || {
-        TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
-          run_step(step, metadata, cwd, &context);
-          TestResult::Passed { duration: None }
-        }))
-      };
-      let result = run_maybe_flaky_test(
-        &test.name,
-        step.flaky,
-        flaky_test_tracker,
-        None,
-        run_func,
-      );
-      if result.is_failed() {
-        return result;
-      }
+fn run_test_inner(metadata: &MultiStepMetaData, cwd: &PathRef) -> TestResult {
+  let context = test_context_from_metadata(metadata, cwd);
+  for step in metadata
+    .steps
+    .iter()
+    .filter(|s| should_run(s.if_cond.as_deref()))
+  {
+    let result =
+      TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
+        run_step(step, metadata, cwd, &context);
+        TestResult::Passed { duration: None }
+      }));
+    if result.is_failed() {
+      return result;
     }
-    TestResult::Passed { duration: None }
-  };
-  run_maybe_flaky_test(
-    &test.name,
-    metadata.flaky || *IS_CI,
-    flaky_test_tracker,
-    Some(parallelism),
-    run_fn,
-  )
+  }
+  TestResult::Passed { duration: None }
 }
 
 fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {
@@ -462,10 +351,8 @@ fn deserialize_value(metadata_value: serde_json::Value) -> MultiStepMetaData {
 fn test_context_from_metadata(
   metadata: &MultiStepMetaData,
   cwd: &PathRef,
-  diagnostic_logger: Rc<RefCell<Vec<u8>>>,
 ) -> test_util::TestContext {
   let mut builder = TestContextBuilder::new();
-  builder = builder.logging_capture(diagnostic_logger);
 
   if metadata.temp_dir {
     builder = builder.use_temp_cwd();
@@ -473,31 +360,8 @@ fn test_context_from_metadata(
     builder = builder.cwd(cwd.to_string_lossy());
   }
 
-  if metadata.canonicalized_temp_dir {
-    // not actually deprecated, we just want to discourage its use
-    #[allow(
-      deprecated,
-      reason = "not actually deprecated, just discouraging use"
-    )]
-    {
-      builder = builder.use_canonicalized_temp_dir();
-    }
-  }
-  if metadata.symlinked_temp_dir {
-    // not actually deprecated, we just want to discourage its use
-    // because it's mostly used for testing purposes locally
-    #[allow(
-      deprecated,
-      reason = "not actually deprecated, just discouraging use"
-    )]
-    {
-      builder = builder.use_symlinked_temp_dir();
-    }
-    if cfg!(not(debug_assertions)) {
-      // panic to prevent using this on the CI as CI already uses
-      // a symlinked temp directory for every test
-      panic!("Cannot use symlinkedTempDir in release mode");
-    }
+  if metadata.canonicalized_temp_dir || metadata.symlinked_temp_dir {
+    panic!("canonicalizedTempDir and symlinkedTempDir aren't supported");
   }
 
   match &metadata.base {
@@ -505,10 +369,7 @@ fn test_context_from_metadata(
     Some(base) => panic!("Unknown test base: {}", base),
     None => {
       // by default add all these
-      builder = builder
-        .add_jsr_env_vars()
-        .add_npm_env_vars()
-        .add_compile_env_vars();
+      builder = builder.add_jsr_env_vars().add_npm_env_vars();
     }
   }
 
@@ -622,15 +483,6 @@ fn run_step(
     }
     None => command,
   };
-  let command = match *NO_CAPTURE {
-    // deprecated is only to prevent use, so this is fine here
-    #[allow(
-      deprecated,
-      reason = "not actually deprecated, just discouraging use"
-    )]
-    true => command.show_output(),
-    false => command,
-  };
   let command = match &step.input {
     Some(input) => {
       if input.ends_with(".in") {
@@ -640,10 +492,6 @@ fn run_step(
         command.stdin_text(input)
       }
     }
-    None => command,
-  };
-  let command = match metadata.timeout {
-    Some(secs) => command.timeout(std::time::Duration::from_secs(secs)),
     None => command,
   };
   let output = command.run();

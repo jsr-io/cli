@@ -38,3 +38,12 @@ output.
 cargo test
 cargo run -- publish --dry-run
 ```
+
+`cargo test` also runs Deno's publish and pack tests (`tests/specs`,
+`tests/integration`) against the `jsr` binary, with mock JSR and npm
+registries (`tests/util/server`). A few fixtures use `deno` from the `PATH` to
+set themselves up. To run a single spec test:
+
+```sh
+cargo test --test specs -- publish::dry_run
+```

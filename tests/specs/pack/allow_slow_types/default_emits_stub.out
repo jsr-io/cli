@@ -1,5 +1,4 @@
 [WILDCARD]Packing @test/slow-types
-Check mod.ts
 error[missing-explicit-return-type]: missing explicit return type in the public API
 [WILDCARD]
   docs: https://jsr.io/go/slow-type-missing-explicit-return-type

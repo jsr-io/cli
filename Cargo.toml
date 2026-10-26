@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["cli", "src"]
-default-members = ["cli", "src"]
+members = ["cli", "src", "tests/util"]
+default-members = ["cli", "src", "tests/util"]
 
 [workspace.package]
 edition = "2024"

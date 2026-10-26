@@ -1,4 +1,4 @@
-const output = new Deno.Command(Deno.execPath(), {
+const output = new Deno.Command(Deno.env.get("JSR_BIN")!, {
   args: ["publish"],
   clearEnv: true,
   env: {

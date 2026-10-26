@@ -10,7 +10,6 @@ use test_util::env_vars_for_jsr_provenance_tests;
 use test_util::env_vars_for_jsr_tests;
 use test_util::env_vars_for_jsr_tests_with_git_check;
 use test_util::eprintln;
-use test_util::test;
 
 #[test]
 fn publish_non_exported_files_using_import_map() {
@@ -391,9 +390,11 @@ fn includes_directories() {
   temp_dir.join("main.ts").write("");
   temp_dir.join("ignored.ts").write("");
 
+  // the tarball files are only listed at the debug log level
   let output = context
     .new_command()
     .arg("publish")
+    .arg("--log-level=debug")
     .arg("--token")
     .arg("sadfasdf")
     .run();
@@ -493,8 +494,7 @@ fn allow_dirty() {
     .arg("sadfasdf")
     .run();
   output.assert_exit_code(1);
-  output.assert_matches_text(r#"Check [WILDLINE]
-Checking for slow types in the public API...
+  output.assert_matches_text(r#"Checking for slow types in the public API...
 
 Uncommitted changes:
 

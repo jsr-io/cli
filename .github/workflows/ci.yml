@@ -12,6 +12,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dsherret/rust-toolchain-file@v1
       - uses: Swatinem/rust-cache@v2
+      # some test fixtures run `deno install`, `deno eval` or `deno run` to set
+      # themselves up
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.x
       - name: Format
         run: cargo fmt --check
       - name: Clippy

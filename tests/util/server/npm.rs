@@ -15,10 +15,7 @@ use parking_lot::Mutex;
 use tar::Builder;
 
 use crate::PathRef;
-use crate::root_path;
 use crate::tests_path;
-
-pub static ESBUILD_VERSION: &str = "0.25.5";
 
 pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   TestNpmRegistry::new(
@@ -31,69 +28,8 @@ pub static PUBLIC_TEST_NPM_REGISTRY: Lazy<TestNpmRegistry> = Lazy::new(|| {
   )
 });
 
-pub static PRIVATE_TEST_NPM_REGISTRY_1: Lazy<TestNpmRegistry> =
-  Lazy::new(|| {
-    TestNpmRegistry::new(
-      NpmRegistryKind::Private,
-      &format!(
-        "http://localhost:{}",
-        crate::consts::PRIVATE_NPM_REGISTRY_1_PORT
-      ),
-      "npm-private",
-    )
-  });
-
-pub static PRIVATE_TEST_NPM_REGISTRY_2: Lazy<TestNpmRegistry> =
-  Lazy::new(|| {
-    TestNpmRegistry::new(
-      NpmRegistryKind::Private,
-      &format!(
-        "http://localhost:{}",
-        crate::consts::PRIVATE_NPM_REGISTRY_2_PORT
-      ),
-      "npm-private2",
-    )
-  });
-
-pub static PRIVATE_TEST_NPM_REGISTRY_3: Lazy<TestNpmRegistry> =
-  Lazy::new(|| {
-    TestNpmRegistry::new(
-      NpmRegistryKind::Private,
-      &format!(
-        "http://localhost:{}",
-        crate::consts::PRIVATE_NPM_REGISTRY_3_PORT
-      ),
-      "npm-private3",
-    )
-  });
-
-pub static PRIVATE_TEST_NPM_REGISTRY_MTLS: Lazy<TestNpmRegistry> =
-  Lazy::new(|| {
-    TestNpmRegistry::new(
-      NpmRegistryKind::Private,
-      &format!(
-        "https://localhost:{}",
-        crate::consts::PRIVATE_NPM_REGISTRY_MTLS_PORT
-      ),
-      "npm-private",
-    )
-  });
-
-pub static PUBLIC_TEST_NPM_JSR_REGISTRY: Lazy<TestNpmRegistry> =
-  Lazy::new(|| {
-    TestNpmRegistry::new(
-      NpmRegistryKind::Public,
-      &format!(
-        "http://localhost:{}",
-        crate::consts::PUBLIC_NPM_JSR_REGISTRY_PORT
-      ),
-      "npm-jsr",
-    )
-  });
-
 pub enum NpmRegistryKind {
   Public,
-  Private,
 }
 
 struct CustomNpmPackage {
@@ -146,15 +82,6 @@ impl TestNpmRegistry {
     self.get_package_property(name, |p| p.registry_file.as_bytes().to_vec())
   }
 
-  pub fn package_url(&self, package_name: &str) -> String {
-    let scheme = if self.hostname.starts_with("http://") {
-      ""
-    } else {
-      "http://"
-    };
-    format!("{}{}/{}/", scheme, self.hostname, package_name)
-  }
-
   fn get_package_property<TResult>(
     &self,
     package_name: &str,
@@ -176,14 +103,8 @@ impl TestNpmRegistry {
     &self,
     uri_path: &'s str,
   ) -> Option<(&'s str, &'s str)> {
-    let scope_names = [
-      "@denotest",
-      "@denotest2",
-      "@denotest3",
-      "@jsr",
-      "@esbuild",
-      "@types",
-    ];
+    let scope_names =
+      ["@denotest", "@denotest2", "@denotest3", "@jsr", "@types"];
     for scope_name in scope_names {
       let prefix1 = format!("/{}/", scope_name);
       let prefix2 = format!("/{}%2f", scope_name);
@@ -323,48 +244,6 @@ fn create_package_version_info(
   Ok((tarball_bytes, version_info))
 }
 
-fn get_esbuild_platform_info(
-  platform_name: &str,
-) -> Option<(&'static str, &'static str, bool)> {
-  match platform_name {
-    "linux-x64" => Some(("esbuild-x64", "linux64", false)),
-    "linux-arm64" => Some(("esbuild-aarch64", "linux64", false)),
-    "darwin-x64" => Some(("esbuild-x64", "mac", false)),
-    "darwin-arm64" => Some(("esbuild-aarch64", "mac", false)),
-    "win32-x64" => Some(("esbuild-x64.exe", "win", true)),
-    "win32-arm64" => Some(("esbuild-aarch64.exe", "win", true)),
-    _ => None,
-  }
-}
-
-fn setup_esbuild_binary(
-  package_dir: &Path,
-  esbuild_prebuilt: &Path,
-  is_windows: bool,
-) -> Result<&'static str> {
-  let binary_name = if is_windows { "esbuild.exe" } else { "esbuild" };
-
-  if is_windows {
-    std::fs::copy(esbuild_prebuilt, package_dir.join(binary_name))?;
-    Ok(binary_name)
-  } else {
-    let bin_dir = package_dir.join("bin");
-    std::fs::create_dir_all(&bin_dir)?;
-    let binary_path = bin_dir.join(binary_name);
-    std::fs::copy(esbuild_prebuilt, &binary_path)?;
-
-    #[cfg(unix)]
-    {
-      use std::os::unix::fs::PermissionsExt;
-      let mut perms = std::fs::metadata(&binary_path)?.permissions();
-      perms.set_mode(0o755); // rwxr-xr-x
-      std::fs::set_permissions(&binary_path, perms)?;
-    }
-
-    Ok("bin/esbuild")
-  }
-}
-
 fn create_tarball_from_dir(package_dir: &Path) -> Result<Vec<u8>> {
   let mut tarball_bytes = Vec::new();
   {
@@ -380,134 +259,11 @@ fn create_tarball_from_dir(package_dir: &Path) -> Result<Vec<u8>> {
   Ok(tarball_bytes)
 }
 
-fn create_npm_registry_response(
-  package_name: &str,
-  version: &str,
-  description: &str,
-  bin_path: &str,
-  tarball_bytes: Vec<u8>,
-  registry_hostname: &str,
-) -> Result<CustomNpmPackage> {
-  let tarball_checksum = get_tarball_checksum(&tarball_bytes);
-  let mut dist = serde_json::Map::new();
-  dist.insert(
-    "integrity".to_string(),
-    format!("sha512-{tarball_checksum}").into(),
-  );
-  dist.insert("shasum".to_string(), "dummy-value".into());
-  dist.insert(
-    "tarball".to_string(),
-    format!("{registry_hostname}/{package_name}/{version}.tgz").into(),
-  );
-
-  let mut version_info = serde_json::Map::new();
-  version_info.insert("name".to_string(), package_name.into());
-  version_info.insert("version".to_string(), version.into());
-  version_info.insert("description".to_string(), description.into());
-  version_info.insert("bin".to_string(), bin_path.into());
-  version_info.insert("dist".to_string(), dist.into());
-
-  let mut versions = serde_json::Map::new();
-  versions.insert(version.to_string(), version_info.into());
-
-  let mut dist_tags = serde_json::Map::new();
-  dist_tags.insert("latest".to_string(), version.into());
-
-  let mut registry_file = serde_json::Map::new();
-  registry_file.insert("name".to_string(), package_name.into());
-  registry_file.insert("versions".to_string(), versions.into());
-  registry_file.insert("dist-tags".to_string(), dist_tags.into());
-
-  let mut tarballs = HashMap::new();
-  tarballs.insert(version.to_string(), tarball_bytes);
-
-  Ok(CustomNpmPackage {
-    registry_file: serde_json::to_string(&registry_file)?,
-    tarballs,
-  })
-}
-
-fn create_esbuild_package(
-  registry_hostname: &str,
-  package_name: &str,
-) -> Result<Option<CustomNpmPackage>> {
-  let platform_name = package_name.strip_prefix("@esbuild/").unwrap();
-
-  let (bin_name, folder, is_windows) =
-    match get_esbuild_platform_info(platform_name) {
-      Some(info) => info,
-      None => return Ok(None),
-    };
-
-  let esbuild_prebuilt = root_path()
-    .join("third_party/prebuilt")
-    .join(folder)
-    .join(bin_name);
-
-  if !esbuild_prebuilt.exists() {
-    return Ok(None);
-  }
-
-  let temp_dir = tempfile::tempdir()?;
-  let package_dir = temp_dir.path().join("package");
-  std::fs::create_dir_all(&package_dir)?;
-
-  let bin_path =
-    setup_esbuild_binary(&package_dir, esbuild_prebuilt.as_path(), is_windows)?;
-
-  let package_json = serde_json::json!({
-    "name": package_name,
-    "version": ESBUILD_VERSION,
-    "description": format!("The {} binary for esbuild", platform_name),
-    "bin": bin_path
-  });
-
-  std::fs::write(
-    package_dir.join("package.json"),
-    serde_json::to_string_pretty(&package_json)?,
-  )?;
-
-  let tarball_bytes = create_tarball_from_dir(&package_dir)?;
-  let package = create_npm_registry_response(
-    package_name,
-    ESBUILD_VERSION,
-    &format!("The {} binary for esbuild", platform_name),
-    bin_path,
-    tarball_bytes,
-    registry_hostname,
-  )?;
-
-  Ok(Some(package))
-}
-
 fn get_npm_package(
   registry_hostname: &str,
   local_path: &str,
   package_name: &str,
 ) -> Result<Option<CustomNpmPackage>> {
-  if package_name.starts_with("@esbuild/")
-    && let Some(esbuild_package) =
-      create_esbuild_package(registry_hostname, package_name)?
-  {
-    return Ok(Some(esbuild_package));
-  }
-
-  let registry_hostname = if package_name == "@denotest/tarballs-privateserver2"
-  {
-    "http://localhost:4262"
-  } else if package_name == "@denotest/tarballs-privateserver404" {
-    // Tarball served from a registry that 404s the unauthenticated request
-    // (and has no fixture there), to exercise the 404 auth-hint path.
-    "http://localhost:4263"
-  } else if package_name == "@denotest/tarballs-npmjs" {
-    // Packument points `dist.tarball` at the public npm registry even though the
-    // package is served by a private/proxy registry (some proxies don't rewrite
-    // tarball URLs). Deno should relocate the tarball download to the configured
-    // registry rather than downloading it from `registry.npmjs.org`.
-    "https://registry.npmjs.org"
-  } else {
-    registry_hostname
-  };
   let package_folder = tests_path()
     .join("registry")
     .join(local_path)

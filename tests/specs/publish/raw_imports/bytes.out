@@ -1,4 +1,3 @@
-Check [WILDCARD]bytes_main.ts
 Checking for slow types in the public API...
 error[unstable-raw-import]: bytes imports have not been stabilized
  --> [WILDLINE]bytes_main.ts:1:18
