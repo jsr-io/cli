@@ -82,8 +82,9 @@ impl PublishFactory {
     for diagnostic in workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
-    let unstable_sloppy_imports =
-      options.sloppy_imports || workspace.has_unstable("sloppy-imports");
+    let unstable_sloppy_imports = options.sloppy_imports
+      || workspace.has_unstable("sloppy-imports")
+      || is_npm_project(workspace);
     let unstable_raw_imports =
       options.unstable_raw_imports || workspace.has_unstable("raw-imports");
     let jsr_url = deno_resolver::factory::resolve_jsr_url(&sys);
@@ -255,4 +256,15 @@ fn on_resolve_diagnostic(
     diagnostic.referrer,
     diagnostic.start
   );
+}
+
+/// Whether the workspace is an npm project, with a package.json and no
+/// deno.json. Extensionless imports are common in npm projects, so they get
+/// sloppy imports.
+fn is_npm_project(workspace: &deno_config::workspace::Workspace) -> bool {
+  workspace.package_jsons().next().is_some()
+    && workspace.deno_jsons().all(|config| {
+      let file_name = config.specifier.path().rsplit('/').next().unwrap_or("");
+      file_name.starts_with("jsr.json")
+    })
 }
