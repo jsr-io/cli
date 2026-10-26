@@ -7,12 +7,15 @@ import * as path from "node:path";
 import * as util from "node:util";
 import * as stream from "node:stream";
 import StreamZipPkg from "node-stream-zip";
-import { styleText } from "./utils.ts";
 import { cliVersionInfo } from "./cli_version.ts";
 
 const { async } = StreamZipPkg;
 
 const streamFinished = util.promisify(stream.finished);
+
+const styleText = typeof util.styleText === "function"
+  ? util.styleText
+  : (_style: string[] | string, text: string) => text;
 
 // Example: https://github.com/jsr-io/cli/releases/download/v0.1.0/jsr-aarch64-apple-darwin.zip
 const RELEASE_URL = "https://github.com/jsr-io/cli/releases/download";
@@ -28,14 +31,14 @@ const TARGETS: Record<string, string> = {
   "win32 x64": "x86_64-pc-windows-msvc",
 };
 
-export interface DownloadInfo {
+interface DownloadInfo {
   url: string;
   filename: string;
   version: string;
   target: string;
 }
 
-export function getJsrDownloadUrl(): DownloadInfo {
+function getJsrDownloadUrl(): DownloadInfo {
   let key = `${process.platform} ${os.arch()}`;
   if (process.platform === "linux" && isMusl()) {
     key += " musl";
@@ -64,7 +67,36 @@ function isMusl(): boolean {
   return report.header?.glibcVersionRuntime === undefined;
 }
 
-export async function downloadJsr(
+/**
+ * Returns the path of the jsr binary of this package's version, downloading
+ * it into `binFolder` first if needed.
+ */
+export async function getOrDownloadBinPath(binFolder: string) {
+  const info = getJsrDownloadUrl();
+
+  const binPath = path.join(
+    binFolder,
+    info.version,
+    // Ensure each binary has their own folder to avoid overwriting it
+    // in case jsr gets added to a project as a dependency where
+    // developers use multiple OSes
+    info.target,
+    process.platform === "win32" ? "jsr.exe" : "jsr",
+  );
+
+  // Check if jsr executable is available, download it if not.
+  if (!fs.existsSync(binPath)) {
+    // Clear folder first to get rid of old download artifacts
+    // to avoid taking up lots of disk space.
+    await fs.promises.rm(binFolder, { recursive: true, force: true });
+
+    await downloadJsr(binPath, info);
+  }
+
+  return binPath;
+}
+
+async function downloadJsr(
   binPath: string,
   info: DownloadInfo,
 ): Promise<void> {

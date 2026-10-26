@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as module from "node:module";
 import { isMainThread } from "node:worker_threads";
-import { exec, writeJson } from "../src/utils.ts";
+import { spawn } from "node:child_process";
 
 export interface DenoJson {
   name: string;
@@ -98,4 +98,109 @@ export async function isFile(path: string): Promise<boolean> {
   } catch (err) {
     return false;
   }
+}
+
+export interface PkgJson {
+  name?: string;
+  version?: string;
+  license?: string;
+  workspaces?: string[];
+
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  exports?: string | Record<string, string | Record<string, string>>;
+  scripts?: Record<string, string>;
+}
+
+export class ExecError extends Error {
+  public code: number;
+
+  constructor(code: number) {
+    super(`Child process exited with: ${code}`);
+    this.code = code;
+  }
+}
+
+export interface ExecOutput {
+  combined: string;
+  stdout: string;
+  stderr: string;
+}
+
+export async function exec(
+  cmd: string,
+  args: string[],
+  cwd: string,
+  env?: Record<string, string | undefined>,
+  captureOutput?: boolean,
+): Promise<ExecOutput> {
+  const cp = spawn(
+    cmd,
+    args.map((arg) => process.platform === "win32" ? `"${arg}"` : `'${arg}'`),
+    {
+      stdio: captureOutput ? "pipe" : "inherit",
+      cwd,
+      shell: true,
+      env,
+    },
+  );
+
+  let combined = "";
+  let stdout = "";
+  let stderr = "";
+
+  if (captureOutput) {
+    cp.stdout?.on("data", (data) => {
+      combined += data;
+      stdout += data;
+    });
+    cp.stderr?.on("data", (data) => {
+      combined += data;
+      stderr += data;
+    });
+  }
+
+  return new Promise<ExecOutput>((resolve, reject) => {
+    cp.on("exit", (code) => {
+      if (code === 0) {
+        resolve({ combined, stdout, stderr });
+      } else {
+        console.log(`Command: ${cmd} ${args.join(" ")}`);
+        console.log(`CWD: ${cwd}`);
+        console.log(`Output: ${combined}`);
+        reject(new ExecError(code ?? 1));
+      }
+    });
+  });
+}
+
+/** Bun reads .npmrc since v1.1.18, before that jsr writes a bunfig.toml. */
+export async function isBunNpmrcSupported(cwd: string): Promise<boolean> {
+  const output = await exec("bun", ["--version"], cwd, undefined, true);
+  const [major, minor, patch] = output.stdout.trim().split(".").map(Number);
+  return major > 1 ||
+    (major === 1 && (minor > 1 || (minor === 1 && patch >= 18)));
+}
+
+export async function readJson<T>(file: string): Promise<T> {
+  const content = await fs.promises.readFile(file, "utf-8");
+  return JSON.parse(content);
+}
+
+export async function writeJson<T>(file: string, data: T): Promise<void> {
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  await fs.promises.writeFile(file, JSON.stringify(data, null, 2), "utf-8");
+}
+
+export async function readTextFile(file: string): Promise<string> {
+  return fs.promises.readFile(file, "utf-8");
+}
+
+export async function writeTextFile(
+  file: string,
+  content: string,
+): Promise<void> {
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  await fs.promises.writeFile(file, content, "utf-8");
 }
