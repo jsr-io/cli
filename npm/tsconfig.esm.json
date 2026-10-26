@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "target": "ESNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist-esm/"
+  },
+  "include": ["src"],
+  // we don't want to compile the bin file in ESM mode
+  "exclude": ["src/bin.ts"]
+}
