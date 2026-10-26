@@ -65,6 +65,16 @@ struct ConfigArgs {
   /// Enable unstable 'bytes' and 'text' imports
   #[arg(long)]
   unstable_raw_imports: bool,
+
+  /// Accepted for compatibility with Deno, where it doesn't affect
+  /// publishing. The jsr npm package passes it.
+  #[arg(long, hide = true)]
+  unstable_bare_node_builtins: bool,
+
+  /// Accepted for compatibility with Deno, where it doesn't affect
+  /// publishing. The jsr npm package passes it.
+  #[arg(long, hide = true)]
+  unstable_byonm: bool,
 }
 
 impl ConfigArgs {
