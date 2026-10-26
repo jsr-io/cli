@@ -1,0 +1,120 @@
+name: release
+
+# Pushing a v* tag builds jsr for every target and creates a draft GitHub
+# release with the binaries. Publishing that release publishes the npm package
+# (see npm_publish.yml). Running the workflow by hand only builds.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that the tag matches the versions
+        run: |
+          cli_version="v$(grep -m1 '^version = ' cli/Cargo.toml | cut -d '"' -f2)"
+          npm_version="v$(node -p 'require("./npm/package.json").version')"
+          echo "tag: $GITHUB_REF_NAME, cli/Cargo.toml: $cli_version, npm/package.json: $npm_version"
+          test "$GITHUB_REF_NAME" = "$cli_version"
+          test "$GITHUB_REF_NAME" = "$npm_version"
+
+  build:
+    needs: check-version
+    # check-version is skipped when the workflow is run by hand
+    if: ${{ !failure() && !cancelled() }}
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-22.04-arm }
+          - { target: x86_64-apple-darwin, os: macos-14 }
+          - { target: aarch64-apple-darwin, os: macos-14 }
+          - { target: x86_64-pc-windows-msvc, os: windows-2022 }
+          - { target: aarch64-pc-windows-msvc, os: windows-11-arm }
+    steps:
+      - uses: actions/checkout@v4
+      # From Deno's CI: windows-11-arm has no rustup, and the rustup 1.29.0
+      # that dsherret/rust-toolchain-file would install is broken.
+      - name: Pre-install rustup 1.28.2 (workaround broken 1.29.0)
+        shell: bash
+        run: |
+          if command -v rustup >/dev/null 2>&1; then
+            if ! rustup --version 2>&1 | grep -q '1\.29\.0'; then exit 0; fi
+            echo "Detected broken rustup 1.29.0, replacing with 1.28.2"
+          fi
+          case "${RUNNER_OS}-${RUNNER_ARCH}" in
+            Linux-X64)     target=x86_64-unknown-linux-gnu; ext= ;;
+            Linux-ARM64)   target=aarch64-unknown-linux-gnu; ext= ;;
+            macOS-X64)     target=x86_64-apple-darwin; ext= ;;
+            macOS-ARM64)   target=aarch64-apple-darwin; ext= ;;
+            Windows-X64)   target=x86_64-pc-windows-msvc; ext=.exe ;;
+            Windows-ARM64) target=aarch64-pc-windows-msvc; ext=.exe ;;
+            *) echo "Unsupported: ${RUNNER_OS}-${RUNNER_ARCH}"; exit 1 ;;
+          esac
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL \
+            "https://static.rust-lang.org/rustup/archive/1.28.2/${target}/rustup-init${ext}" \
+            -o "rustup-init${ext}"
+          chmod +x "rustup-init${ext}"
+          "./rustup-init${ext}" -y --default-toolchain none --no-modify-path
+          rm "rustup-init${ext}"
+          echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"
+      - uses: dsherret/rust-toolchain-file@v1
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+      - name: Install musl tools
+        if: endsWith(matrix.target, '-musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        run: cargo build --locked --release --bin jsr --target ${{ matrix.target }}
+      - name: Smoke test
+        # macos-14 runners are arm64 and can't run the x86_64 binary
+        if: matrix.target != 'x86_64-apple-darwin'
+        run: target/${{ matrix.target }}/release/jsr --help
+      - name: Zip
+        if: runner.os != 'Windows'
+        working-directory: target/${{ matrix.target }}/release
+        run: zip -9 "$GITHUB_WORKSPACE/jsr-${{ matrix.target }}.zip" jsr
+      - name: Zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/jsr.exe -DestinationPath jsr-${{ matrix.target }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jsr-${{ matrix.target }}
+          path: jsr-${{ matrix.target }}.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: for f in *.zip; do sha256sum "$f" > "$f.sha256sum"; done
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --repo "$GITHUB_REPOSITORY" --draft --verify-tag
+          --title "$GITHUB_REF_NAME" --generate-notes

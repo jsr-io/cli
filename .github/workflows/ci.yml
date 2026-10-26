@@ -23,3 +23,45 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test
+      - name: Format (npm)
+        run: deno fmt --check npm
+
+  npm:
+    name: npm (${{ matrix.os }}, node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: 22.x }
+          - { os: ubuntu-latest, node: 24.x }
+          - { os: ubuntu-24.04-arm, node: 24.x }
+          - { os: macos-latest, node: 24.x }
+          - { os: windows-latest, node: 24.x }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dsherret/rust-toolchain-file@v1
+      - uses: Swatinem/rust-cache@v2
+      - name: Build jsr
+        working-directory: .
+        run: cargo build --locked --bin jsr
+      - uses: actions/setup-node@v6
+        with:
+          cache: npm
+          cache-dependency-path: npm/package-lock.json
+          node-version: ${{ matrix.node }}
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 8
+      - uses: oven-sh/setup-bun@v1
+      - run: corepack enable yarn
+      - run: npm ci
+      - run: node --run build
+      - name: Test
+        shell: bash
+        run: |
+          export JSR_BIN_PATH="$GITHUB_WORKSPACE/target/debug/jsr${{ runner.os == 'Windows' && '.exe' || '' }}"
+          node --run test

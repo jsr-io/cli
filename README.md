@@ -8,10 +8,10 @@ dependencies on `deno_core` and `deno_runtime`. The `chore: copy ...` commits
 contain the unmodified copies, so `git log -p` shows every change made to
 them.
 
-It will be published to JSR as `@jsr/cli`, and the
-[`jsr`](https://www.npmjs.com/package/jsr) npm package becomes its npm entry
-point. `deno publish` will run the JSR package, like `deno deploy` runs
-`@deno/deploy`.
+It's released as binaries on GitHub releases. The
+[`jsr`](https://www.npmjs.com/package/jsr) npm package in `npm`, moved here from
+[jsr-io/jsr-npm](https://github.com/jsr-io/jsr-npm), downloads and runs them
+for `npx jsr publish`. `deno publish` will become a shim that does the same.
 
 Unlike `deno publish`, it doesn't type check.
 
@@ -31,6 +31,7 @@ output.
 
 - `cli`: the `jsr` binary (argument parsing and logging).
 - `src`: the `jsr_cli` crate with the publish and pack logic.
+- `npm`: the `jsr` npm package.
 
 ## Development
 
@@ -47,3 +48,19 @@ set themselves up. To run a single spec test:
 ```sh
 cargo test --test specs -- publish::dry_run
 ```
+
+The npm package's tests need a `jsr` binary:
+
+```sh
+cargo build --bin jsr
+cd npm && npm ci && JSR_BIN_PATH=$PWD/../target/debug/jsr node --run test
+```
+
+## Releasing
+
+1. Set the same version in `cli/Cargo.toml` and `npm/package.json`.
+2. Push a `v<version>` tag. The `release` workflow builds `jsr` for every
+   target and creates a draft GitHub release with the zips and their
+   `.sha256sum` files.
+3. Publish the draft. The `npm publish` workflow writes the version and the
+   checksums into `npm/src/cli_version.ts` and publishes the npm package.
