@@ -1,8 +1,7 @@
 # jsr
 
-The command line tool for publishing packages to [JSR](https://jsr.io). It
-publishes like `deno publish`, without needing Deno, and creates npm tarballs
-like `deno pack`.
+The command line tool for publishing packages to [JSR](https://jsr.io) and
+packing them as npm tarballs.
 
 ## Install
 
@@ -35,11 +34,9 @@ the browser to authenticate, unless you pass `--token`. On GitHub Actions it
 authenticates with OIDC and adds a provenance attestation; pass
 `--no-provenance` to skip the attestation.
 
-The flags match `deno publish` and `deno pack`. Run `jsr publish --help` or
-`jsr pack --help` to list them.
+Run `jsr publish --help` or `jsr pack --help` to list all options.
 
-**`jsr` doesn't type check.** Run `deno check` or `tsc` before publishing.
-`--check` and `--no-check` are accepted for compatibility, and ignored.
+**`jsr` doesn't type check.** Run `tsc` or `deno check` before publishing.
 
 ### Environment variables
 
@@ -48,7 +45,7 @@ The flags match `deno publish` and `deno pack`. Run `jsr publish --help` or
 | `JSR_URL`       | Registry to publish to. Defaults to `https://jsr.io`.               |
 | `JSR_LOG`       | Log filter, for example `debug`.                                    |
 | `JSR_LOG_STYLE` | `auto`, `always` or `never` color in log output.                    |
-| `DENO_DIR`      | Cache for downloaded dependencies, shared with Deno.                |
+| `DENO_DIR`      | Cache for downloaded dependencies.                                  |
 | `JSR_BIN_PATH`  | npm package only: run this `jsr` binary instead of downloading one. |
 
 ## Development
