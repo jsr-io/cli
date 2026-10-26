@@ -9,14 +9,21 @@ use clap::Parser;
 use clap::Subcommand;
 use deno_terminal::colors;
 use jsr_cli::FactoryOptions;
+use jsr_cli::npm_project;
+use jsr_cli::npm_project::DependencyKind;
+use jsr_cli::npm_project::PkgManagerName;
 use jsr_cli::pack::FileFlags;
 use jsr_cli::pack::PackFlags;
 use jsr_cli::publish::PublishOptions;
 
 /// The JSR command line tool.
 #[derive(Parser)]
-#[command(name = "jsr", version)]
+#[command(name = "jsr", version, disable_version_flag = true)]
 struct Cli {
+  /// Print version
+  #[arg(short = 'v', short_alias = 'V', long, action = clap::ArgAction::Version)]
+  version: (),
+
   /// Set log level
   #[arg(
     short = 'L',
@@ -36,10 +43,104 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+  /// Add JSR packages to the package.json and install them
+  #[command(visible_aliases = ["install", "i"])]
+  Add(AddArgs),
+  /// Remove JSR packages from the package.json
+  #[command(visible_aliases = ["uninstall", "r"])]
+  Remove(RemoveArgs),
+  /// Show information about a JSR package
+  #[command(visible_aliases = ["show", "view"])]
+  Info(InfoArgs),
+  /// Run a script from the package.json. `jsr <script>` works too
+  Run(RunArgs),
   /// Publish the current working directory's package or workspace
   Publish(PublishArgs),
   /// Create a tarball of the package
   Pack(PackArgs),
+  #[command(external_subcommand)]
+  Script(Vec<String>),
+}
+
+/// Chooses the package manager. By default it's detected from the lockfile.
+#[derive(Args)]
+#[group(multiple = false)]
+struct PackageManagerArgs {
+  /// Use npm
+  #[arg(long)]
+  npm: bool,
+  /// Use yarn
+  #[arg(long)]
+  yarn: bool,
+  /// Use pnpm
+  #[arg(long)]
+  pnpm: bool,
+  /// Use bun
+  #[arg(long)]
+  bun: bool,
+}
+
+impl PackageManagerArgs {
+  fn name(&self) -> Option<PkgManagerName> {
+    if self.npm {
+      Some(PkgManagerName::Npm)
+    } else if self.yarn {
+      Some(PkgManagerName::Yarn)
+    } else if self.pnpm {
+      Some(PkgManagerName::Pnpm)
+    } else if self.bun {
+      Some(PkgManagerName::Bun)
+    } else {
+      None
+    }
+  }
+}
+
+#[derive(Args)]
+struct AddArgs {
+  /// Packages to add, like @std/encoding or @std/encoding@1. Without any,
+  /// installs the existing dependencies
+  packages: Vec<String>,
+
+  /// Add to dependencies. This is the default
+  #[arg(short = 'P', long, group = "dependency_kind")]
+  save_prod: bool,
+
+  /// Add to devDependencies
+  #[arg(short = 'D', long, group = "dependency_kind")]
+  save_dev: bool,
+
+  /// Add to optionalDependencies
+  #[arg(short = 'O', long, group = "dependency_kind")]
+  save_optional: bool,
+
+  #[command(flatten)]
+  package_manager: PackageManagerArgs,
+}
+
+#[derive(Args)]
+struct RemoveArgs {
+  /// Packages to remove
+  #[arg(required = true)]
+  packages: Vec<String>,
+
+  #[command(flatten)]
+  package_manager: PackageManagerArgs,
+}
+
+#[derive(Args)]
+struct InfoArgs {
+  /// The package, like @std/encoding or @std/encoding@1
+  package: String,
+}
+
+#[derive(Args)]
+struct RunArgs {
+  /// The script to run
+  script: String,
+
+  #[command(flatten)]
+  package_manager: PackageManagerArgs,
 }
 
 /// Config file and unstable feature arguments shared by the subcommands.
@@ -195,6 +296,10 @@ fn main() {
     .unwrap();
   let result = runtime.block_on(run(cli.command));
   if let Err(err) = result {
+    if let Some(err) = err.downcast_ref::<npm_project::ExecError>() {
+      log::error!("{}: {}", colors::red_bold("error"), err);
+      std::process::exit(err.code);
+    }
     log::error!(
       "{}: {}",
       colors::red_bold("error"),
@@ -205,7 +310,39 @@ fn main() {
 }
 
 async fn run(command: Command) -> Result<(), anyhow::Error> {
+  let cwd = std::env::current_dir()?;
   match command {
+    Command::Add(args) => {
+      let kind = if args.save_dev {
+        DependencyKind::Dev
+      } else if args.save_optional {
+        DependencyKind::Optional
+      } else {
+        DependencyKind::Prod
+      };
+      let name = args.package_manager.name();
+      with_timing(npm_project::add(&cwd, &args.packages, kind, name)).await
+    }
+    Command::Remove(args) => {
+      let name = args.package_manager.name();
+      with_timing(async { npm_project::remove(&cwd, &args.packages, name) })
+        .await
+    }
+    Command::Info(args) => npm_project::info(&args.package).await,
+    Command::Run(args) => {
+      let name = args.package_manager.name();
+      with_timing(async { npm_project::run_script(&cwd, &args.script, name) })
+        .await
+    }
+    Command::Script(args) => {
+      let script = &args[0];
+      if !npm_project::has_script(&cwd, script) {
+        anyhow::bail!(
+          "Unknown command: {script}. Run `jsr --help` for the commands."
+        );
+      }
+      with_timing(async { npm_project::run_script(&cwd, script, None) }).await
+    }
     Command::Publish(args) => {
       if args.check.is_some() {
         log::warn!(
@@ -247,5 +384,34 @@ async fn run(command: Command) -> Result<(), anyhow::Error> {
       )
       .await
     }
+  }
+}
+
+/// Runs a package manager command and logs how long it took.
+async fn with_timing(
+  future: impl Future<Output = Result<(), anyhow::Error>>,
+) -> Result<(), anyhow::Error> {
+  let start = std::time::Instant::now();
+  future.await?;
+  log::info!(
+    "\n{} in {}",
+    colors::green("Completed"),
+    pretty_time(start.elapsed())
+  );
+  Ok(())
+}
+
+fn pretty_time(duration: std::time::Duration) -> String {
+  let ms = duration.as_millis();
+  if ms > 24 * 60 * 60 * 1000 {
+    format!("{}d", ms / (24 * 60 * 60 * 1000))
+  } else if ms > 60 * 60 * 1000 {
+    format!("{}h", ms / (60 * 60 * 1000))
+  } else if ms > 60 * 1000 {
+    format!("{}m", ms / (60 * 1000))
+  } else if ms > 1000 {
+    format!("{}s", ms / 1000)
+  } else {
+    format!("{ms}ms")
   }
 }

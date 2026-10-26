@@ -1,10 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! Publishing packages to JSR and packing them as npm tarballs.
+//! Publishing packages to JSR, packing them as npm tarballs, and managing
+//! the JSR dependencies of npm projects.
 //!
-//! The code was copied from `cli/tools/publish` and `cli/tools/pack` in the
-//! Deno repository (Deno 2.9), without the dependencies on `deno_core` and
-//! `deno_runtime`.
+//! The publish and pack code was copied from `cli/tools/publish` and
+//! `cli/tools/pack` in the Deno repository (Deno 2.9), without the
+//! dependencies on `deno_core` and `deno_runtime`.
 
 mod factory;
 mod file_fetcher;
@@ -13,6 +14,7 @@ mod graph_util;
 mod http_util;
 mod no_slow_types;
 mod npm;
+pub mod npm_project;
 pub mod pack;
 pub mod publish;
 mod registry;
