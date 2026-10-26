@@ -1,44 +1,53 @@
 # jsr
 
-The command line tool for publishing packages to [JSR](https://jsr.io) and
-packing them as npm tarballs.
+Command line tools for [JSR](https://jsr.io), in two forms:
 
-## Install
+- The [`jsr`](https://www.npmjs.com/package/jsr) npm package, run with
+  `npx jsr`. It manages JSR dependencies of npm, yarn, pnpm and bun projects,
+  and publishes packages.
+- The `jsr` binary, from the
+  [GitHub releases](https://github.com/jsr-io/cli/releases). It publishes and
+  packs packages. Builds exist for Linux (glibc and musl), macOS and Windows,
+  each on x64 and arm64.
 
-From npm, which also adds commands for installing JSR packages into npm, yarn,
-pnpm and bun projects:
+`npx jsr publish` downloads the binary of its own version and runs it.
+
+## Commands
+
+| Command                    | npm package | Binary | Description                                     |
+| -------------------------- | ----------- | ------ | ----------------------------------------------- |
+| `add`, `install`, `i`      | yes         |        | Add JSR packages to `package.json` and install. |
+| `remove`, `uninstall`, `r` | yes         |        | Remove JSR packages.                            |
+| `info`, `show`, `view`     | yes         |        | Show information about a JSR package.           |
+| `run <script>`, `<script>` | yes         |        | Run a `package.json` script.                    |
+| `publish`                  | yes         | yes    | Publish the package or workspace.               |
+| `pack`                     |             | yes    | Create an npm tarball of the package.           |
 
 ```sh
+# add a dependency, with the project's package manager
+npx jsr add @std/encoding
+
+# check everything without uploading, then publish
+npx jsr publish --dry-run
 npx jsr publish
-```
 
-Or download a binary from the
-[GitHub releases](https://github.com/jsr-io/cli/releases). They are built for
-Linux (glibc and musl), macOS and Windows, each on x64 and arm64.
-
-## Usage
-
-```sh
-# check everything, without uploading
-jsr publish --dry-run
-
-# publish the package or workspace in the current directory
+# with the binary
 jsr publish
-
-# create an npm tarball of the package
 jsr pack
 ```
+
+`npx jsr --help`, `jsr publish --help` and `jsr pack --help` list the options.
+
+### Publishing
 
 `jsr publish` reads the package from `jsr.json(c)` or `deno.json(c)`. It opens
 the browser to authenticate, unless you pass `--token`. On GitHub Actions it
 authenticates with OIDC and adds a provenance attestation; pass
 `--no-provenance` to skip the attestation.
 
-Run `jsr publish --help` or `jsr pack --help` to list all options.
-
 **`jsr` doesn't type check.** Run `tsc` or `deno check` before publishing.
 
-### Environment variables
+## Environment variables
 
 | Variable        | Description                                                         |
 | --------------- | ------------------------------------------------------------------- |
