@@ -30,6 +30,8 @@ sys_traits = { version = "0.1.28", features = ["getrandom", "filetime", "libc", 
 
 anyhow = "1.0.57"
 aws-lc-rs = "1.18.2"
+# like Deno, so release builds for x86_64 windows don't need NASM installed
+aws-lc-sys = { version = "0.46.0", features = ["prebuilt-nasm"] }
 async-trait = "0.1.73"
 base64 = "0.22.1"
 bytes = "1.11.1"
