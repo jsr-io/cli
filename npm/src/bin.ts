@@ -105,13 +105,10 @@ ${
     prettyPrintRow([
       ["JSR_URL", "Use a different registry URL for the publish command."],
       [
-        "DENO_BIN_PATH",
-        "Use specified Deno binary instead of local downloaded one.",
+        "JSR_BIN_PATH",
+        "Use specified jsr binary instead of local downloaded one.",
       ],
-      [
-        "DENO_BIN_CANARY",
-        "Use the canary Deno binary instead of latest for publishing.",
-      ],
+      ["DENO_BIN_PATH", "Deprecated alias for JSR_BIN_PATH."],
     ])
   }
 `);
@@ -146,15 +143,13 @@ if (args.length === 0) {
 } else {
   const cmd = args[0];
   // Bypass cli argument validation for publish command. The underlying
-  // `deno publish` cli is under active development and args may change
-  // frequently.
+  // `jsr publish` cli validates them.
   if (cmd === "publish") {
     const binFolder = path.join(__dirname, "..", ".download");
 
     run(async () => {
       const projectInfo = await findProjectDir(process.cwd());
       return publish(process.cwd(), {
-        canary: process.env.DENO_BIN_CANARY !== undefined,
         binFolder,
         publishArgs: args.slice(1),
         pkgJsonPath: projectInfo.pkgJsonPath,

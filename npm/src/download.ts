@@ -8,90 +8,89 @@ import * as util from "node:util";
 import * as stream from "node:stream";
 import StreamZipPkg from "node-stream-zip";
 import { styleText } from "./utils.ts";
-import { denoVersionInfo } from "./deno_version.ts";
+import { cliVersionInfo } from "./cli_version.ts";
 
 const { async } = StreamZipPkg;
 
 const streamFinished = util.promisify(stream.finished);
 
-const DENO_CANARY_INFO_URL = "https://dl.deno.land/canary-latest.txt";
+// Example: https://github.com/jsr-io/cli/releases/download/v0.1.0/jsr-aarch64-apple-darwin.zip
+const RELEASE_URL = "https://github.com/jsr-io/cli/releases/download";
 
-// Example: https://github.com/denoland/deno/releases/download/v1.41.0/deno-aarch64-apple-darwin.zip
-// Example: https://dl.deno.land/canary/d722de886b85093eeef08d1e9fd6f3193405762d/deno-aarch64-apple-darwin.zip
-const FILENAMES: Record<string, string> = {
-  "darwin arm64": "deno-aarch64-apple-darwin",
-  "darwin x64": "deno-x86_64-apple-darwin",
-  "linux arm64": "deno-aarch64-unknown-linux-gnu",
-  "linux x64": "deno-x86_64-unknown-linux-gnu",
-  "win32 x64": "deno-x86_64-pc-windows-msvc",
+const TARGETS: Record<string, string> = {
+  "darwin arm64": "aarch64-apple-darwin",
+  "darwin x64": "x86_64-apple-darwin",
+  "linux arm64": "aarch64-unknown-linux-gnu",
+  "linux x64": "x86_64-unknown-linux-gnu",
+  "linux arm64 musl": "aarch64-unknown-linux-musl",
+  "linux x64 musl": "x86_64-unknown-linux-musl",
+  "win32 arm64": "aarch64-pc-windows-msvc",
+  "win32 x64": "x86_64-pc-windows-msvc",
 };
 
 export interface DownloadInfo {
   url: string;
   filename: string;
   version: string;
-  canary: boolean;
+  target: string;
 }
 
-export async function getDenoDownloadUrl(
-  canary: boolean,
-): Promise<DownloadInfo> {
-  const key = `${process.platform} ${os.arch()}`;
-  if (!(key in FILENAMES)) {
+export function getJsrDownloadUrl(): DownloadInfo {
+  let key = `${process.platform} ${os.arch()}`;
+  if (process.platform === "linux" && isMusl()) {
+    key += " musl";
+  }
+  if (!(key in TARGETS)) {
     throw new Error(`Unsupported platform: ${key}`);
   }
 
-  const name = FILENAMES[key];
-  const filename = name + ".zip";
-  const version = await getDenoVersionToDownload(canary);
+  const target = TARGETS[key];
+  const filename = `jsr-${target}.zip`;
+  const version = cliVersionInfo.version;
 
   return {
-    canary,
-    url: canary
-      ? `https://dl.deno.land/canary/${decodeURI(version)}/${filename}`
-      : `https://dl.deno.land/release/${decodeURI(version)}/${filename}`,
+    url: `${RELEASE_URL}/${version}/${filename}`,
     filename,
-    version: version,
+    version,
+    target,
   };
 }
 
-async function getDenoVersionToDownload(canary: boolean) {
-  if (canary) {
-    return await getLatestCanary();
-  } else {
-    return denoVersionInfo.version;
-  }
+function isMusl(): boolean {
+  // Only glibc reports its version in the process report
+  const report = process.report.getReport() as {
+    header?: { glibcVersionRuntime?: string };
+  };
+  return report.header?.glibcVersionRuntime === undefined;
 }
 
-async function getLatestCanary() {
-  const url = DENO_CANARY_INFO_URL;
-  const res = await fetch(url);
-  if (!res.ok) {
-    await res.body?.cancel();
-    throw new Error(
-      `${res.status}: Unable to retrieve canary version information from ${url}.`,
-    );
-  }
-  return (await res.text()).trim();
-}
-
-export async function downloadDeno(
+export async function downloadJsr(
   binPath: string,
   info: DownloadInfo,
 ): Promise<void> {
+  const expectedHash = cliVersionInfo.hashes[info.filename];
+  if (expectedHash === undefined) {
+    throw new Error(
+      `No checksum for ${info.filename} in this jsr package. ` +
+        `Set JSR_BIN_PATH to use a local jsr binary.`,
+    );
+  }
+
   const binFolder = path.dirname(binPath);
 
   await fs.promises.mkdir(binFolder, { recursive: true });
 
   const res = await fetch(info.url);
+  if (!res.ok) {
+    await res.body?.cancel();
+    throw new Error(`${res.status}: Unable to download ${info.url}.`);
+  }
   const contentLen = Number(res.headers.get("content-length") ?? Infinity);
   if (res.body == null) {
     throw new Error(`Unexpected empty body`);
   }
 
-  console.log(
-    `Downloading JSR ${info.canary ? "canary" : "release"} binary...`,
-  );
+  console.log("Downloading JSR release binary...");
 
   await withProgressBar(
     async (tick) => {
@@ -110,18 +109,14 @@ export async function downloadDeno(
       const file = path.join(binFolder, info.filename);
       await fs.promises.rename(tmpFile, file);
 
-      // verify hash for release builds
-      const expectedHash = denoVersionInfo.hashes[info.filename];
-      if (!info.canary && expectedHash) {
-        const actualHash = hash.digest("hex");
-        if (actualHash !== expectedHash) {
-          await fs.promises.rm(file);
-          throw new Error(
-            `Hash mismatch for ${info.filename}:\n` +
-              `  expected: ${expectedHash}\n` +
-              `  actual:   ${actualHash}`,
-          );
-        }
+      const actualHash = hash.digest("hex");
+      if (actualHash !== expectedHash) {
+        await fs.promises.rm(file);
+        throw new Error(
+          `Hash mismatch for ${info.filename}:\n` +
+            `  expected: ${expectedHash}\n` +
+            `  actual:   ${actualHash}`,
+        );
       }
 
       const zip = new async({ file });

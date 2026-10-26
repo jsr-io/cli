@@ -16,7 +16,7 @@ import {
   type PkgManagerName,
   YarnBerry,
 } from "./pkg_manager.ts";
-import { downloadDeno, getDenoDownloadUrl } from "./download.ts";
+import { downloadJsr, getJsrDownloadUrl } from "./download.ts";
 import { getNpmPackageInfo, getPackageMeta } from "./api.ts";
 import semiver from "semiver";
 
@@ -135,11 +135,10 @@ export interface PublishOptions {
   binFolder: string;
   pkgJsonPath: string | null;
   publishArgs: string[];
-  canary: boolean;
 }
 
-async function getOrDownloadBinPath(binFolder: string, canary: boolean) {
-  const info = await getDenoDownloadUrl(canary);
+async function getOrDownloadBinPath(binFolder: string) {
+  const info = getJsrDownloadUrl();
 
   const binPath = path.join(
     binFolder,
@@ -147,11 +146,11 @@ async function getOrDownloadBinPath(binFolder: string, canary: boolean) {
     // Ensure each binary has their own folder to avoid overwriting it
     // in case jsr gets added to a project as a dependency where
     // developers use multiple OSes
-    process.platform,
-    process.platform === "win32" ? "deno.exe" : "deno",
+    info.target,
+    process.platform === "win32" ? "jsr.exe" : "jsr",
   );
 
-  // Check if deno executable is available, download it if not.
+  // Check if jsr executable is available, download it if not.
   if (!(await fileExists(binPath))) {
     // Clear folder first to get rid of old download artifacts
     // to avoid taking up lots of disk space.
@@ -163,15 +162,15 @@ async function getOrDownloadBinPath(binFolder: string, canary: boolean) {
       }
     }
 
-    await downloadDeno(binPath, info);
+    await downloadJsr(binPath, info);
   }
 
   return binPath;
 }
 
 export async function publish(cwd: string, options: PublishOptions) {
-  const binPath = process.env.DENO_BIN_PATH ??
-    await getOrDownloadBinPath(options.binFolder, options.canary);
+  const binPath = process.env.JSR_BIN_PATH ?? process.env.DENO_BIN_PATH ??
+    await getOrDownloadBinPath(options.binFolder);
 
   // Ready to publish now!
   const args = [

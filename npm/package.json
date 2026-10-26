@@ -4,7 +4,8 @@
   "description": "jsr.io package manager for npm, yarn, pnpm and bun",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jsr-io/jsr-npm.git"
+    "url": "https://github.com/jsr-io/cli.git",
+    "directory": "npm"
   },
   "bin": {
     "jsr": "dist/bin.js"

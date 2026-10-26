@@ -721,7 +721,7 @@ describe("publish", () => {
 
   // Windows doesn't support #!/usr/bin/env
   if (process.platform !== "win32") {
-    it("use deno binary from DENO_BIN_PATH when set", async () => {
+    it("use jsr binary from JSR_BIN_PATH when set", async () => {
       await runInTempDir(async (dir) => {
         await writeTextFile(
           path.join(dir, "mod.ts"),
@@ -738,29 +738,7 @@ describe("publish", () => {
         });
 
         await runJsr(["publish", "--dry-run", "--non-existant-option"], dir, {
-          DENO_BIN_PATH: path.join(import.meta.dirname, "fixtures", "dummy.js"),
-        });
-      });
-    });
-
-    it("use deno canary binary when DENO_BIN_CANARY when set", async () => {
-      await runInTempDir(async (dir) => {
-        await writeTextFile(
-          path.join(dir, "mod.ts"),
-          "export const value = 42;",
-        );
-
-        await writeJson<DenoJson>(path.join(dir, "jsr.json"), {
-          name: "@deno/jsr-cli-test",
-          version: "1.0.0",
-          license: "MIT",
-          exports: {
-            ".": "./mod.ts",
-          },
-        });
-
-        await runJsr(["publish", "--dry-run"], dir, {
-          DENO_BIN_CANARY: "true",
+          JSR_BIN_PATH: path.join(import.meta.dirname, "fixtures", "dummy.js"),
         });
       });
     });
