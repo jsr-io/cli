@@ -72,10 +72,71 @@ fn create_reqwest_client(
     // stripped when redirecting to a different origin
     .redirect(reqwest::redirect::Policy::none())
     .use_rustls_tls();
+  builder = add_root_certificates(builder)?;
   if let Some(identity) = identity {
     builder = builder.identity(identity);
   }
   Ok(builder.build()?)
+}
+
+/// Picks the trusted root certificates:
+///
+/// - `DENO_TLS_CA_STORE`: comma separated stores, `mozilla` (the default)
+///   and/or `system`.
+/// - `DENO_CERT`: a PEM file with additional certificates, or
+///   `base64:<pem>`.
+fn add_root_certificates(
+  builder: reqwest::ClientBuilder,
+) -> Result<reqwest::ClientBuilder, AnyError> {
+  let stores = std::env::var("DENO_TLS_CA_STORE").ok();
+  let mut builder = add_ca_stores(builder, stores.as_deref())?;
+  if let Ok(cert) = std::env::var("DENO_CERT") {
+    for cert in reqwest::Certificate::from_pem_bundle(&read_ca_data(&cert)?)? {
+      builder = builder.add_root_certificate(cert);
+    }
+  }
+  Ok(builder)
+}
+
+fn add_ca_stores(
+  builder: reqwest::ClientBuilder,
+  stores: Option<&str>,
+) -> Result<reqwest::ClientBuilder, AnyError> {
+  let mut mozilla = stores.is_none();
+  let mut system = false;
+  for store in stores
+    .unwrap_or_default()
+    .split(',')
+    .map(str::trim)
+    .filter(|s| !s.is_empty())
+  {
+    match store {
+      "mozilla" => mozilla = true,
+      "system" => system = true,
+      _ => anyhow::bail!(
+        "Unknown certificate store \"{store}\" specified (allowed: \"system,mozilla\")"
+      ),
+    }
+  }
+  Ok(
+    builder
+      .tls_built_in_webpki_certs(mozilla)
+      .tls_built_in_native_certs(system),
+  )
+}
+
+fn read_ca_data(value: &str) -> Result<Vec<u8>, AnyError> {
+  use base64::Engine;
+
+  match value.strip_prefix("base64:") {
+    Some(data) => Ok(
+      base64::prelude::BASE64_STANDARD
+        .decode(data)
+        .context("Failed decoding DENO_CERT")?,
+    ),
+    None => std::fs::read(value)
+      .with_context(|| format!("Failed opening CA file {value}")),
+  }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -309,5 +370,38 @@ impl RequestBuilder {
 
   pub async fn send(self) -> Result<http::Response<ResBody>, AnyError> {
     Ok(send_request(&self.client, self.req).await?)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn ca_stores() {
+    for stores in [
+      None,
+      Some("mozilla"),
+      Some("system"),
+      Some(" mozilla, system "),
+    ] {
+      add_ca_stores(reqwest::Client::builder().use_rustls_tls(), stores)
+        .unwrap()
+        .build()
+        .unwrap();
+    }
+    let err = add_ca_stores(reqwest::Client::builder(), Some("mozilla,other"))
+      .unwrap_err();
+    assert_eq!(
+      err.to_string(),
+      "Unknown certificate store \"other\" specified (allowed: \"system,mozilla\")"
+    );
+  }
+
+  #[test]
+  fn ca_data() {
+    assert_eq!(read_ca_data("base64:aGVsbG8=").unwrap(), b"hello");
+    assert!(read_ca_data("base64:!").is_err());
+    assert!(read_ca_data("/does/not/exist.pem").is_err());
   }
 }
