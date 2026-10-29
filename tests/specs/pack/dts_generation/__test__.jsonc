@@ -10,7 +10,7 @@
         "commandName": "bash",
         "args": [
           "-c",
-          "tar -xzf test-dts-gen-1.0.0.tgz && grep -q 'export interface Config' package/mod.d.ts && echo 'Has interface: true' || echo 'Has interface: false'"
+          "tar -xzf test-dts-gen-1.0.0.tgz && grep -q 'export interface Config' package/_dist/mod.d.ts && echo 'Has interface: true' || echo 'Has interface: false'"
         ],
         "output": "Has interface: true\n"
       }, {
@@ -18,7 +18,7 @@
         "commandName": "bash",
         "args": [
           "-c",
-          "grep -q 'export declare function greet' package/mod.d.ts && echo 'Has function declaration: true' || echo 'Has function declaration: false'"
+          "grep -q 'export declare function greet' package/_dist/mod.d.ts && echo 'Has function declaration: true' || echo 'Has function declaration: false'"
         ],
         "output": "Has function declaration: true\n"
       }]

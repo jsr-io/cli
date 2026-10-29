@@ -38,6 +38,7 @@ bytes = "1.11.1"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 clap = { version = "4.5", features = ["derive"] }
 env_logger = { version = "=0.11.6", default-features = false }
+jsr_npm_tarball = { git = "https://github.com/jsr-io/jsr", rev = "6bff33b301fd3e89ee011ca798af49037a348f58" }
 faster-hex = "0.10.0"
 flate2 = { version = "1.0.30", default-features = false, features = ["zlib-ng-compat"] }
 futures = "0.3.31"

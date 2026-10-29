@@ -2,17 +2,14 @@
   "name": "@test/multi-export",
   "version": "1.0.0",
   "type": "module",
-  "main": "./mod.js",
-  "types": "./mod.d.ts",
+  "dependencies": {},
   "exports": {
     ".": {
-      "types": "./mod.d.ts",
-      "import": "./mod.js",
+      "types": "./_dist/mod.d.ts",
       "default": "./mod.js"
     },
     "./utils": {
-      "types": "./utils.d.ts",
-      "import": "./utils.js",
+      "types": "./_dist/utils.d.ts",
       "default": "./utils.js"
     }
   }

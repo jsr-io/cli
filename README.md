@@ -66,6 +66,13 @@ pass `--no-provenance` to skip the attestation.
 
 **`jsr` doesn't type check.** Run `tsc` or `deno check` before publishing.
 
+### Packing
+
+`jsr pack` writes the npm tarball that JSR's npm registry would serve for the
+package, named after the package itself (`@scope/name` instead of
+`@jsr/scope__name`). It contains the files `jsr publish` would upload, the
+JavaScript and source maps generated from them, and declarations in `_dist/`.
+
 ## Environment variables
 
 | Variable        | Description                                                    |

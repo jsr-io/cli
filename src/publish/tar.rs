@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::fmt::Write as FmtWrite;
+use std::io::Read;
 use std::io::Write;
 
 use anyhow::Context;
@@ -28,6 +30,25 @@ pub struct PublishableTarball {
   pub files: Vec<PublishableTarballFile>,
   pub hash: String,
   pub bytes: Bytes,
+}
+
+impl PublishableTarball {
+  /// Reads the files of the tarball, by their path in the package, like
+  /// `/mod.ts`.
+  pub fn read_files(&self) -> Result<HashMap<String, Vec<u8>>, AnyError> {
+    let mut files = HashMap::new();
+    let mut archive =
+      tar::Archive::new(flate2::read::GzDecoder::new(&self.bytes[..]));
+    for entry in archive.entries()? {
+      let mut entry = entry?;
+      let path = entry.path()?.to_string_lossy().into_owned();
+      let path = format!("/{}", path.trim_start_matches("./"));
+      let mut content = Vec::new();
+      entry.read_to_end(&mut content)?;
+      files.insert(path, content);
+    }
+    Ok(files)
+  }
 }
 
 pub fn create_gzipped_tarball(

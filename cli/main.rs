@@ -201,8 +201,8 @@ struct PackArgs {
   #[arg(long)]
   dry_run: bool,
 
-  /// Skip fast-check type extraction; .d.ts files are omitted from the
-  /// output
+  /// Don't warn about slow types. Modules with slow types get no .d.ts
+  /// files either way
   #[arg(long)]
   allow_slow_types: bool,
 

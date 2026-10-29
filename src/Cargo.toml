@@ -41,6 +41,7 @@ futures.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+jsr_npm_tarball.workspace = true
 lazy-regex.workspace = true
 log.workspace = true
 open.workspace = true

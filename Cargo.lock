@@ -2069,6 +2069,7 @@ dependencies = [
  "http",
  "http-body",
  "http-body-util",
+ "jsr_npm_tarball",
  "lazy-regex",
  "log",
  "node_resolver",
@@ -2093,6 +2094,28 @@ dependencies = [
  "uuid",
  "wasmparser",
  "which",
+]
+
+[[package]]
+name = "jsr_npm_tarball"
+version = "0.1.0"
+source = "git+https://github.com/jsr-io/jsr?rev=6bff33b301fd3e89ee011ca798af49037a348f58#6bff33b301fd3e89ee011ca798af49037a348f58"
+dependencies = [
+ "anyhow",
+ "base64",
+ "deno_ast",
+ "deno_error",
+ "deno_graph",
+ "deno_semver",
+ "flate2",
+ "futures",
+ "indexmap",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "tar",
+ "url",
 ]
 
 [[package]]
