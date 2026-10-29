@@ -68,13 +68,15 @@ pass `--no-provenance` to skip the attestation.
 
 ## Environment variables
 
-| Variable        | Description                                                    |
-| --------------- | -------------------------------------------------------------- |
-| `JSR_URL`       | Registry to publish to. Defaults to `https://jsr.io`.          |
-| `JSR_LOG`       | Log filter, for example `debug`.                               |
-| `JSR_LOG_STYLE` | `auto`, `always` or `never` color in log output.               |
-| `DENO_DIR`      | Cache for downloaded dependencies.                             |
-| `JSR_BIN_PATH`  | npm package: run this `jsr` binary instead of downloading one. |
+| Variable            | Description                                                                    |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `JSR_URL`           | Registry to publish to. Defaults to `https://jsr.io`.                          |
+| `JSR_LOG`           | Log filter, for example `debug`.                                               |
+| `JSR_LOG_STYLE`     | `auto`, `always` or `never` color in log output.                               |
+| `DENO_DIR`          | Cache for downloaded dependencies.                                             |
+| `DENO_CERT`         | Extra trusted CA certificates: a PEM file, or `base64:<pem>`.                  |
+| `DENO_TLS_CA_STORE` | Trusted certificate stores, comma separated: `mozilla` (default) and `system`. |
+| `JSR_BIN_PATH`      | npm package: run this `jsr` binary instead of downloading one.                 |
 
 ## Development
 
