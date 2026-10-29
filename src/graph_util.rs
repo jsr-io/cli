@@ -1,9 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! Module graph creation for publishing.
-//!
-//! Based on `cli/graph_util.rs` in the Deno repository, without type
-//! checking.
+//! Module graph creation for publishing. Nothing is type checked.
 
 use std::borrow::Cow;
 
@@ -280,8 +277,7 @@ impl<'a> ModuleGraphCreator<'a> {
         roots.iter(),
         deno_graph::WalkOptions {
           check_js: CheckJsOption::Custom(compiler_options_resolver.as_ref()),
-          // nothing is type checked, so like `deno publish --no-check`, only
-          // validate the code dependencies
+          // nothing is type checked, so only validate the code dependencies
           kind: GraphKind::CodeOnly,
           follow_dynamic: false,
           prefer_fast_check_graph: false,

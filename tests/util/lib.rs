@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! Test utilities, based on `tests/util` in the Deno repository.
+//! Utilities for the spec and integration tests.
 
 mod builders;
 #[path = "server/npm.rs"]

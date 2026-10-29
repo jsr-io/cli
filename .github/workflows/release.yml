@@ -46,8 +46,8 @@ jobs:
           - { target: aarch64-pc-windows-msvc, os: windows-11-arm }
     steps:
       - uses: actions/checkout@v4
-      # From Deno's CI: windows-11-arm has no rustup, and the rustup 1.29.0
-      # that dsherret/rust-toolchain-file would install is broken.
+      # windows-11-arm has no rustup, and the rustup 1.29.0 that
+      # dsherret/rust-toolchain-file would install is broken.
       - name: Pre-install rustup 1.28.2 (workaround broken 1.29.0)
         shell: bash
         run: |

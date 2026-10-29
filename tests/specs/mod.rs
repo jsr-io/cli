@@ -165,7 +165,7 @@ struct MultiStepMetaData {
   /// Whether the temporary directory should be symlinked to another path.
   #[serde(default)]
   pub symlinked_temp_dir: bool,
-  // accepted for compatibility with Deno's tests, but not retried
+  // accepted, but flaky tests aren't retried
   #[allow(dead_code, reason = "not used")]
   #[serde(default)]
   pub flaky: bool,
@@ -182,8 +182,7 @@ struct MultiStepMetaData {
   pub steps: Vec<StepMetaData>,
   #[serde(default)]
   pub ignore: bool,
-  /// Timeout in seconds for each step. Accepted for compatibility with
-  /// Deno's tests, but not enforced.
+  /// Timeout in seconds for each step. Accepted, but not enforced.
   #[allow(dead_code, reason = "not used")]
   #[serde(default)]
   pub timeout: Option<u64>,

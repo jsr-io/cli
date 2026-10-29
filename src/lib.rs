@@ -2,10 +2,6 @@
 
 //! Publishing packages to JSR, packing them as npm tarballs, and managing
 //! the JSR dependencies of npm projects.
-//!
-//! The publish and pack code was copied from `cli/tools/publish` and
-//! `cli/tools/pack` in the Deno repository (Deno 2.9), without the
-//! dependencies on `deno_core` and `deno_runtime`.
 
 mod factory;
 mod file_fetcher;

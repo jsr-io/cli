@@ -37,7 +37,7 @@ use npm_tarball::default_tarball_filename;
 use package_json::generate_package_json;
 use unfurl::unfurl_specifiers;
 
-/// The arguments of `deno pack`.
+/// The arguments of `jsr pack`.
 #[derive(Debug, Clone, Default)]
 pub struct PackFlags {
   pub files: FileFlags,
@@ -474,9 +474,9 @@ pub struct AssetFile {
 /// Walk the filesystem for non-module assets matched by the package's
 /// publish config (`publish.include`/`exclude`) and read their raw bytes.
 ///
-/// `deno publish` collects every file via the publish `FilePatterns`, but
-/// `deno pack` only walks the module graph, so static assets were never
-/// included. This mirrors `publish`'s `collect_paths` (ignore .git,
+/// Publishing collects every file via the publish `FilePatterns`, but
+/// packing only walks the module graph, so static assets would be missing.
+/// This mirrors `publish`'s `collect_paths` (ignore .git,
 /// node_modules and the vendor dir, honour .gitignore, skip non-regular
 /// files / `.DS_Store` / `.gitignore`) and then drops anything already
 /// emitted by another part of the tarball:
@@ -536,7 +536,7 @@ fn collect_asset_files(
 
   let collected = FileCollector::new(|e| {
     if !e.metadata.file_type().is_file() {
-      // Mirror `deno publish`, which surfaces a diagnostic for non-regular
+      // Mirror `jsr publish`, which surfaces a diagnostic for non-regular
       // files matched by the publish config. `pack` can't include them, so
       // warn rather than silently dropping (e.g. a symlinked asset) to
       // avoid a confusing "why is my file missing?" report.
@@ -762,7 +762,7 @@ fn process_single_module(
   // processing. SWC's module parser rejects shebangs with "Expected
   // ident", and tools downstream don't want to deal with them either.
   // We re-prepend the shebang to the final emitted JS so executable
-  // scripts still work after `deno pack`.
+  // scripts still work after `jsr pack`.
   let (shebang, source_text) = split_shebang(raw_source);
 
   let parsed = parsed_source_cache.remove_or_parse_module(
