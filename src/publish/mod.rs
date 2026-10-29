@@ -15,7 +15,9 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
+use deno_ast::diagnostics::Diagnostic;
 use deno_config::deno_json::ConfigFile;
+use deno_config::glob::FilePatterns;
 use deno_config::workspace::JsrPackageConfig;
 use deno_config::workspace::Workspace;
 use deno_resolver::collections::FolderScopedMap;
@@ -167,41 +169,16 @@ pub async fn publish(options: PublishOptions) -> Result<(), AnyError> {
     }
   }
 
-  let resolver_factory = factory.resolver_factory();
-  let specifier_unfurler = SpecifierUnfurler::new(
-    resolver_factory.node_resolver()?.clone(),
-    resolver_factory.npm_req_resolver()?.clone(),
-    resolver_factory.pkg_json_resolver().clone(),
-    start_dir.clone(),
-    resolver_factory.workspace_resolver().await?.clone(),
-  );
-
-  let diagnostics_collector = PublishDiagnosticsCollector::default();
-  let parsed_source_cache = resolver_factory.parsed_source_cache();
-  let module_content_provider = Arc::new(ModuleContentProvider::new(
-    parsed_source_cache.clone(),
-    specifier_unfurler,
-    factory.sys().clone(),
-    resolver_factory.compiler_options_resolver()?.clone(),
-  ));
-  let publish_preparer = PublishPreparer::new(
-    GraphDiagnosticsCollector::new(
-      resolver_factory.npm_resolver()?.clone(),
-      parsed_source_cache.clone(),
-    ),
+  let prepared_data = prepare_packages(
     &factory,
-    module_content_provider,
-  );
-
-  let prepared_data = publish_preparer
-    .prepare_packages_for_publishing(
-      options.allow_slow_types,
-      &diagnostics_collector,
-      publish_configs,
-    )
-    .await?;
-
-  diagnostics_collector.print_and_error()?;
+    publish_configs,
+    PrepareOptions {
+      allow_slow_types: options.allow_slow_types,
+      pack: false,
+      adjust_file_patterns: None,
+    },
+  )
+  .await?;
 
   if prepared_data.package_by_name.is_empty() {
     bail!("No packages to publish");
@@ -244,6 +221,66 @@ pub async fn publish(options: PublishOptions) -> Result<(), AnyError> {
   .await?;
 
   Ok(())
+}
+
+/// Changes the file patterns that select a package's files.
+pub(crate) type AdjustFilePatterns<'a> =
+  &'a dyn Fn(&JsrPackageConfig, &mut FilePatterns) -> Result<(), AnyError>;
+
+pub(crate) struct PrepareOptions<'a> {
+  pub allow_slow_types: bool,
+  /// Prepares the packages for `pack`: slow types are warnings and a license
+  /// isn't required.
+  pub pack: bool,
+  pub adjust_file_patterns: Option<AdjustFilePatterns<'a>>,
+}
+
+/// Prepares the packages like `publish` does before uploading them, and
+/// prints the diagnostics.
+pub(crate) async fn prepare_packages(
+  factory: &PublishFactory,
+  publish_configs: Vec<JsrPackageConfig>,
+  options: PrepareOptions<'_>,
+) -> Result<PreparePackagesData, AnyError> {
+  let resolver_factory = factory.resolver_factory();
+  let specifier_unfurler = SpecifierUnfurler::new(
+    resolver_factory.node_resolver()?.clone(),
+    resolver_factory.npm_req_resolver()?.clone(),
+    resolver_factory.pkg_json_resolver().clone(),
+    factory.workspace_directory()?.clone(),
+    resolver_factory.workspace_resolver().await?.clone(),
+  );
+
+  let diagnostics_collector = PublishDiagnosticsCollector::default();
+  let parsed_source_cache = resolver_factory.parsed_source_cache();
+  let module_content_provider = Arc::new(ModuleContentProvider::new(
+    parsed_source_cache.clone(),
+    specifier_unfurler,
+    factory.sys().clone(),
+    resolver_factory.compiler_options_resolver()?.clone(),
+  ));
+  let publish_preparer = PublishPreparer::new(
+    GraphDiagnosticsCollector::new(
+      resolver_factory.npm_resolver()?.clone(),
+      parsed_source_cache.clone(),
+    ),
+    factory,
+    module_content_provider,
+    options.pack,
+    options.adjust_file_patterns,
+  );
+
+  let prepared_data = publish_preparer
+    .prepare_packages_for_publishing(
+      options.allow_slow_types,
+      &diagnostics_collector,
+      publish_configs,
+    )
+    .await?;
+
+  diagnostics_collector.print_and_error()?;
+
+  Ok(prepared_data)
 }
 
 fn validate_publish_configs(
@@ -319,11 +356,11 @@ async fn filter_out_published_packages(
   Ok(remaining)
 }
 
-struct PreparedPublishPackage {
+pub(crate) struct PreparedPublishPackage {
   scope: String,
   package: String,
-  version: String,
-  tarball: PublishableTarball,
+  pub version: String,
+  pub tarball: PublishableTarball,
   config: String,
   exports: HashMap<String, String>,
 }
@@ -334,15 +371,17 @@ impl PreparedPublishPackage {
   }
 }
 
-struct PreparePackagesData {
+pub(crate) struct PreparePackagesData {
   publish_order_graph: PublishOrderGraph,
-  package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
+  pub package_by_name: HashMap<String, Rc<PreparedPublishPackage>>,
 }
 
 struct PublishPreparer<'a> {
   graph_diagnostics_collector: GraphDiagnosticsCollector,
   factory: &'a PublishFactory,
   module_content_provider: Arc<ModuleContentProvider>,
+  pack: bool,
+  adjust_file_patterns: Option<AdjustFilePatterns<'a>>,
 }
 
 impl<'a> PublishPreparer<'a> {
@@ -350,11 +389,15 @@ impl<'a> PublishPreparer<'a> {
     graph_diagnostics_collector: GraphDiagnosticsCollector,
     factory: &'a PublishFactory,
     module_content_provider: Arc<ModuleContentProvider>,
+    pack: bool,
+    adjust_file_patterns: Option<AdjustFilePatterns<'a>>,
   ) -> Self {
     Self {
       graph_diagnostics_collector,
       factory,
       module_content_provider,
+      pack,
+      adjust_file_patterns,
     }
   }
 
@@ -364,7 +407,7 @@ impl<'a> PublishPreparer<'a> {
     diagnostics_collector: &PublishDiagnosticsCollector,
     publish_configs: Vec<JsrPackageConfig>,
   ) -> Result<PreparePackagesData, AnyError> {
-    if publish_configs.len() > 1 {
+    if publish_configs.len() > 1 && !self.pack {
       log::info!("Publishing a workspace...");
     }
 
@@ -426,7 +469,9 @@ impl<'a> PublishPreparer<'a> {
       .graph_diagnostics_collector
       .collect_diagnostics_for_graph(&graph, diagnostics_collector)?;
 
-    if allow_slow_types {
+    if allow_slow_types && self.pack {
+      Ok(Arc::new(graph))
+    } else if allow_slow_types {
       log::info!(
         concat!(
           "{} Publishing a library with slow types is not recommended. ",
@@ -472,8 +517,12 @@ impl<'a> PublishPreparer<'a> {
         let export_urls = package.config_file.resolve_export_value_urls()?;
         let diagnostics =
           collect_no_slow_type_diagnostics(&graph, &export_urls);
-        if !diagnostics.is_empty() {
-          for diagnostic in diagnostics {
+        for diagnostic in diagnostics {
+          if self.pack {
+            // the package can still be packed, without declarations for the
+            // modules with slow types
+            log::warn!("{}", diagnostic.display());
+          } else {
             diagnostics_collector
               .push(PublishDiagnostic::FastCheck(diagnostic));
           }
@@ -499,7 +548,10 @@ impl<'a> PublishPreparer<'a> {
       anyhow::anyhow!("{} is missing 'version' field", deno_json.specifier)
     })?;
     let (scope, name_no_scope) = registry::parse_package_name(&package.name)?;
-    let file_patterns = package.member_dir.to_publish_config()?.files;
+    let mut file_patterns = package.member_dir.to_publish_config()?.files;
+    if let Some(adjust_file_patterns) = self.adjust_file_patterns {
+      adjust_file_patterns(package, &mut file_patterns)?;
+    }
 
     let workspace = self.factory.workspace_directory()?.workspace.clone();
     let vendor_dir = workspace.vendor_dir_path().cloned();
@@ -509,6 +561,7 @@ impl<'a> PublishPreparer<'a> {
       let config_path = config_path.clone();
       let config_url = deno_json.specifier.clone();
       let has_license_field = package.license.is_some();
+      let require_license = !self.pack;
       let current_package_name = package.name.clone();
       move || {
         let root_specifier =
@@ -552,7 +605,7 @@ impl<'a> PublishPreparer<'a> {
               )?),
               path: license_path,
             });
-          } else {
+          } else if require_license {
             diagnostics_collector.push(PublishDiagnostic::MissingLicense {
               config_specifier: config_url,
             });

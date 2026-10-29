@@ -1,5 +1,9 @@
 package/LICENSE
 package/README.md
-package/mod.d.ts
+package/_dist/mod.d.ts
+package/_dist/mod.d.ts.map
+package/deno.json
 package/mod.js
+package/mod.js.map
+package/mod.ts
 package/package.json
