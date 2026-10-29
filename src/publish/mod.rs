@@ -480,8 +480,7 @@ impl<'a> PublishPreparer<'a> {
         }
       }
 
-      // the package isn't type checked here. `deno publish` type checks
-      // before running it
+      // the package isn't type checked
       Ok(Arc::new(graph))
     }
   }

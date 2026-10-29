@@ -9,7 +9,7 @@ license = "MIT"
 repository = "https://github.com/jsr-io/cli"
 
 [workspace.dependencies]
-# deno crates, pinned to the versions used by Deno 2.9
+# deno crates
 deno_ast = { version = "=0.53.3" }
 deno_cache_dir = "0.52.0"
 deno_config = { version = "0.110.0", features = ["workspace"] }
@@ -30,7 +30,7 @@ sys_traits = { version = "0.1.28", features = ["getrandom", "filetime", "libc", 
 
 anyhow = "1.0.57"
 aws-lc-rs = "1.18.2"
-# like Deno, so release builds for x86_64 windows don't need NASM installed
+# so release builds for x86_64 windows don't need NASM installed
 aws-lc-sys = { version = "0.46.0", features = ["prebuilt-nasm"] }
 async-trait = "0.1.73"
 base64 = "0.22.1"

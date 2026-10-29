@@ -1,4 +1,4 @@
-# Link the C runtime statically, like Deno, so jsr.exe doesn't need the Visual
-# C++ redistributable.
+# Link the C runtime statically, so jsr.exe doesn't need the Visual C++
+# redistributable.
 [target.'cfg(windows)']
 rustflags = ["-C", "target-feature=+crt-static"]

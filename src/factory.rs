@@ -35,8 +35,8 @@ use crate::http_util::HttpClientProvider;
 use crate::npm::NpmCacheHttpClient;
 use crate::npm::NpmInstallerFactory;
 
-/// The TypeScript version that Deno 2.9 ships with. Used when resolving
-/// `typesVersions` in npm packages.
+/// The TypeScript version used when resolving `typesVersions` in npm
+/// packages.
 const TYPESCRIPT_VERSION: &str = "6.0.3";
 
 #[derive(Debug, Clone, Default)]

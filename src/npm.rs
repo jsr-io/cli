@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! npm registry access, based on `cli/npm.rs` in the Deno repository.
+//! npm registry access.
 
 use std::sync::Arc;
 

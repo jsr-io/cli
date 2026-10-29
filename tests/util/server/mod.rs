@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! The JSR and npm registry servers, based on `tests/util/server` in the
-//! Deno repository.
+//! Mock JSR, npm and provenance servers for the tests.
 
 use std::convert::Infallible;
 

@@ -1,8 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! A small subset of the `TestContextBuilder` and `TestCommandBuilder` API
-//! from `tests/util/lib/builders.rs` in the Deno repository, enough to run
-//! the publish and pack tests.
+//! Builders for running test commands and checking their output.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -318,9 +316,8 @@ impl TestCommandBuilder<'_> {
 
     let program = match &self.command_name {
       Some(name) => name.clone(),
-      // `deno publish` and `deno pack` are run with the jsr binary. Other
-      // deno subcommands used to set up a test (ex. `deno install`) use the
-      // deno on the PATH.
+      // `publish` and `pack` run the jsr binary. Other commands used to set
+      // up a test (ex. `install`) run the deno on the PATH.
       None => match args.first().map(|s| s.as_str()) {
         Some("publish" | "pack") => {
           jsr_exe_path().to_string_lossy().into_owned()
@@ -370,7 +367,7 @@ impl TestCommandBuilder<'_> {
 
     TestCommandOutput {
       command_text,
-      // like Deno's test builders, compare the output without colors
+      // compare the output without colors
       combined: console_static_text::ansi::strip_ansi_codes(&output)
         .into_owned(),
       exit_code: status.code(),

@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-//! HTTP client, based on `cli/http_util.rs` in the Deno repository.
+//! HTTP client.
 
 use std::collections::HashMap;
 use std::path::Path;

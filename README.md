@@ -81,23 +81,20 @@ pass `--no-provenance` to skip the attestation.
 The repository contains:
 
 - `cli`: the `jsr` binary, which parses arguments and sets up logging.
-- `src`: the `jsr_cli` crate. `publish` and `pack` were copied from
-  `cli/tools/publish` and `cli/tools/pack` in Deno 2.9, `npm_project` was ported
-  from [jsr-io/jsr-npm](https://github.com/jsr-io/jsr-npm).
+- `src`: the `jsr_cli` crate with the commands: `publish`, `pack` and
+  `npm_project` (`add`, `remove`, `info` and `run`).
 - `npm`: the [`jsr`](https://www.npmjs.com/package/jsr) npm package, which
   downloads and runs the binary.
-- `tests`: Deno's publish and pack tests, and mock JSR and npm registries.
-
-Code copied from Deno or jsr-npm lands in a `chore: copy ...` commit unmodified,
-so `git log -p` shows every change made to it.
+- `tests`: spec and integration tests for `publish` and `pack`, with mock JSR,
+  npm and provenance servers.
 
 ```sh
 cargo test
 cargo run -- publish --dry-run
 ```
 
-`cargo test` runs Deno's publish and pack tests against the `jsr` binary. A few
-of them use `deno` from the `PATH` to set themselves up. To run one:
+`cargo test` runs them against the `jsr` binary. A few use `deno` from the
+`PATH` to set themselves up. To run one:
 
 ```sh
 cargo test --test specs -- publish::dry_run

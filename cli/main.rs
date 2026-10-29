@@ -142,11 +142,8 @@ struct RunArgs {
 /// Config file and unstable feature arguments shared by the subcommands.
 #[derive(Args)]
 struct ConfigArgs {
-  /// Configure different aspects of deno including TypeScript, linting, and
-  /// code formatting.
-  /// Typically the configuration file will be called `deno.json` or
-  /// `deno.jsonc` and automatically detected; in that case this flag is not
-  /// necessary.
+  /// The config file of the package. By default, a jsr.json(c) or
+  /// deno.json(c) is found from the current directory
   #[arg(short, long, value_name = "FILE")]
   config: Option<PathBuf>,
 
@@ -162,16 +159,6 @@ struct ConfigArgs {
   /// Enable unstable 'bytes' and 'text' imports
   #[arg(long)]
   unstable_raw_imports: bool,
-
-  /// Accepted for compatibility with Deno, where it doesn't affect
-  /// publishing. The jsr npm package passes it.
-  #[arg(long, hide = true)]
-  unstable_bare_node_builtins: bool,
-
-  /// Accepted for compatibility with Deno, where it doesn't affect
-  /// publishing. The jsr npm package passes it.
-  #[arg(long, hide = true)]
-  unstable_byonm: bool,
 }
 
 impl ConfigArgs {
@@ -186,8 +173,7 @@ impl ConfigArgs {
   }
 }
 
-/// Arguments of `deno pack`, see `PACK_SUBCOMMAND` in
-/// `libs/cli_parser/src/defs.rs` in the Deno repository.
+/// Arguments of `jsr pack`.
 #[derive(Args)]
 struct PackArgs {
   /// List of file patterns to include
@@ -226,8 +212,7 @@ struct PackArgs {
   config: ConfigArgs,
 }
 
-/// Arguments of `deno publish`, see `PUBLISH_SUBCOMMAND` in
-/// `libs/cli_parser/src/defs.rs` in the Deno repository.
+/// Arguments of `jsr publish`.
 #[derive(Args)]
 struct PublishArgs {
   /// The API token to use when publishing. If unset, interactive
@@ -260,13 +245,11 @@ struct PublishArgs {
   #[arg(long)]
   set_version: Option<String>,
 
-  /// Accepted for compatibility with `deno publish`. This tool doesn't type
-  /// check.
+  /// Ignored, as jsr doesn't type check
   #[arg(long, num_args = 0..=1, require_equals = true, value_name = "CHECK_TYPE")]
   check: Option<Option<String>>,
 
-  /// Accepted for compatibility with `deno publish`. This tool doesn't type
-  /// check.
+  /// Ignored, as jsr doesn't type check
   #[arg(long, num_args = 0..=1, require_equals = true, value_name = "NO_CHECK_TYPE")]
   no_check: Option<Option<String>>,
 
